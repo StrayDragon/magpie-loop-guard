@@ -1,0 +1,81 @@
+# The same cases.json runs in three engines: node, bun, and moejs — the
+# engine magpie itself runs gateway middleware in (verify/). A tag push
+# also builds the Go verifier across platforms as a smoke check.
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  node:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: [22, 24]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+      - name: Package metadata parses
+        run: node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"
+      - name: Cases (node ${{ matrix.node }})
+        run: node test.mjs
+
+  bun:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - name: Cases (bun)
+        run: bun test.mjs
+
+  moejs:
+    # production's engine: magpie runs gateway middleware in moejs, not in
+    # node or bun, so the suite is checked there too
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: verify
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: verify/go.mod
+      - name: Vet
+        run: go vet .
+      - name: Cases (moejs)
+        run: go run . -file ../loop-guard.middleware.js -cases ../cases.json
+      - name: Cost on a large body stays far under the 250 ms hook budget
+        run: |
+          out=$(go run . -file ../loop-guard.middleware.js -bench)
+          echo "$out"
+          ms=$(echo "$out" | sed -n 's/.*: \([0-9.]*\)ms per call.*/\1/p')
+          awk -v ms="$ms" 'BEGIN { if (ms+0 <= 0 || ms+0 > 25) exit 1 }'
+
+  build:
+    # the verifier compiles on every platform Go supports; a broken build
+    # should be found by CI, not by the first Windows user
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        goos: [linux, darwin, windows]
+        goarch: [amd64, arm64]
+        exclude:
+          - goos: windows
+            goarch: arm64
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: verify/go.mod
+      - name: Build verify for ${{ matrix.goos }}/${{ matrix.goarch }}
+        working-directory: verify
+        run: go build -o /dev/null .
