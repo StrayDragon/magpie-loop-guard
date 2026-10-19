@@ -187,7 +187,8 @@ cd verify && go run . -bench    # 大请求体的单次耗时基准
 
 - `verify/` 是独立的 Go 验证器，依赖 magpie 同款的 [moejs](https://github.com/Calcium-Ion/moejs) 引擎，按网关的调用路径（`moejs.Compile` → `rt.Load` → `onRequest(body, ctx)`）运行同一份用例。
 - 用例覆盖四种协议的工具循环，以及阈值边界：4 次相同回复放行，5 次拒绝。
-- 用例覆盖 `models` 规则的首个命中、继承、`/正则/` 与无法编译模式的处理，以及约定语义：不写/`null`/`""` 不保护、`targets: []` 保护全部、`agents: []` 不收窄。
+- 用例覆盖 `models` 规则的首个命中、字段继承、`/正则/` 与无法编译模式的处理。
+- 用例覆盖约定语义：不写、`null`、`""` 都不保护任何模型；`targets: []` 保护全部；`agents: []` 不收窄范围。
 - 用例覆盖选项行为：`agents` 的匹配、`mode:"log"`、自定义 `status`、`message`、`threshold`、`stopOnUser`、`ignore` 深入工具参数内部、字符预算放行、无历史与空请求体。
 - 用例覆盖 `scope` 的字符串与数组两种写法：改写叙述后 `"tools"` 与 `["tools"]` 仍计数，`"full"` 打断计数。
 - 用例覆盖 `scope` 数组的边界：思考文本每轮变化时 `["text","tools"]` 仍计数；`["text"]` 忽略工具参数变化；`[]` 永不触发；全部未知条目回退全文比较；chat 的 reasoning_content 与 gemini 的 thought 按 `"thinking"` 方面处理。
