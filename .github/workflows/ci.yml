@@ -48,6 +48,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: verify/go.mod
+          cache-dependency-path: verify/go.sum
       - name: Vet
         run: go vet .
       - name: Cases (moejs)
@@ -76,6 +77,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version-file: verify/go.mod
+          cache-dependency-path: verify/go.sum
       - name: Build verify for ${{ matrix.goos }}/${{ matrix.goarch }}
         working-directory: verify
         run: go build -o /dev/null .
