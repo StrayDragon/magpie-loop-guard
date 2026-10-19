@@ -30,6 +30,9 @@
 //     "message": "",         // 自定义拒绝消息;默认说明次数与处理办法
 //     "mode": "reject",      // "log":只记录不拒绝,先试运行观察会不会误伤
 //     "stopOnUser": false,   // true:回看遇到真实用户发言就停止计数(更保守)
+//     "scope": "full",       // "tools":只比较工具调用(名称+参数),叙述文字的
+//                            // 措辞变化不再打断计数;配合 "ignore" 还能忽略
+//                            // 工具参数里的注解字段(如 bash 的 description)
 //     "ignore": []           // 在默认表之外,比较时额外忽略的字段名
 //   }
 
@@ -109,6 +112,7 @@ function build(o) {
   c.status = st >= 400 && st <= 599 ? st : 400
   c.message = typeof o.message === "string" ? o.message : ""
   c.mode = o.mode === "log" ? "log" : "reject"
+  c.scope = o.scope === "tools" ? "tools" : "full"
   c.stopOnUser = o.stopOnUser === true
   const drop = {}
   for (let i = 0; i < DEFAULT_IGNORE.length; i++) drop[DEFAULT_IGNORE[i]] = 1
@@ -238,48 +242,139 @@ function kindResponses(m) {
 // countTail walks the history backward and counts the run of identical
 // replies that ends at the newest one: tool results and (unless stopOnUser)
 // user turns are passed, the run breaks at the first differing reply, and
-// it stops as soon as it reaches the threshold. 0 means "no loop" — also
-// when the walk or the hashing ran out of budget: unknown is never equal.
+// it stops as soon as it reaches the threshold. A logical reply is the run
+// of adjacent reply-classified turns (a Responses reply's message and its
+// function_call), buffered whole so scope:"tools" can decide per reply
+// whether to hash its calls only. 0 means "no loop" — also when the walk
+// or the hashing ran out of budget: unknown is never equal.
 function countTail(list, c, st, protocol) {
   const n = list.length
   let prevKind = "x"
-  let cur = null // the logical reply being accumulated, walking backward
-  let ref = null // the logical reply completed just before it
+  let pending = [] // the turns of the logical reply being accumulated
+  let ref = null // the hash of the logical reply completed just before it
   let run = 0
   let i = n - 1
   while (i >= 0 && st.walk < c.scan) {
     st.walk++
     const k = kindOf(list[i], protocol)
     if (k === "r") {
-      const h = hashTurn(list[i], c.drop, st)
-      if (st.over) return 0
-      cur = prevKind === "r" ? combine(cur, h) : h
+      pending.push(list[i])
     } else {
-      if (prevKind === "r" && cur !== null) {
+      if (prevKind === "r" && pending.length > 0) {
+        const h = hashReplyGroup(pending, c, st, protocol)
+        if (st.over) return 0
         if (ref === null) {
-          ref = cur
+          ref = h
           run = 1
-        } else if (same(ref, cur)) {
+        } else if (same(ref, h)) {
           run++
-          ref = cur
+          ref = h
           if (run >= c.threshold) return run
         } else {
           return 0
         }
-        cur = null
+        pending = []
       }
       if (k === "u" && c.stopOnUser) return 0
     }
     prevKind = k
     i--
   }
-  if (prevKind === "r" && cur !== null) {
+  if (prevKind === "r" && pending.length > 0) {
+    const h = hashReplyGroup(pending, c, st, protocol)
+    if (st.over) return 0
     if (ref === null) run = 1
-    else if (same(ref, cur)) run++
+    else if (same(ref, h)) run++
     else return 0
     if (run >= c.threshold) return run
   }
   return 0
+}
+
+// callsOf returns the tool calls of one reply turn, or null when the turn
+// carries none: anthropic's tool_use content blocks, chat's tool_calls
+// (and its legacy function_call), Responses' call-shaped items, Gemini's
+// functionCall parts. Chat and Responses carry the arguments as a JSON
+// string; the copy hashed here holds them parsed, so the drop table (and
+// with it the "ignore" option) reaches keys inside the arguments. The
+// request itself is never touched.
+function callsOf(m, protocol) {
+  if (!m || typeof m !== "object") return null
+  if (protocol === "responses") {
+    const ty = m.type
+    if (ty === "function_call" || ty === "tool_call" ||
+      ty === "custom_tool_call" || ty === "local_shell_call") {
+      return [{ name: m.name, arguments: parseArgs(m.arguments) }]
+    }
+    return null
+  }
+  if (protocol === "gemini") {
+    if (!Array.isArray(m.parts)) return null
+    const out = []
+    for (let i = 0; i < m.parts.length; i++) {
+      const p = m.parts[i]
+      if (p && typeof p === "object" && p.functionCall) out.push(p)
+    }
+    return out.length > 0 ? out : null
+  }
+  if (protocol === "chat") {
+    if (Array.isArray(m.tool_calls) && m.tool_calls.length > 0) {
+      const out = []
+      for (let i = 0; i < m.tool_calls.length; i++) {
+        const t = m.tool_calls[i]
+        const f = t && typeof t.function === "object" && t.function ? t.function : {}
+        out.push({ name: f.name, arguments: parseArgs(f.arguments) })
+      }
+      return out
+    }
+    if (m.function_call) {
+      return [{ name: m.function_call.name, arguments: parseArgs(m.function_call.arguments) }]
+    }
+    return null
+  }
+  if (Array.isArray(m.content)) {
+    const out = []
+    for (let i = 0; i < m.content.length; i++) {
+      const b = m.content[i]
+      if (b && typeof b === "object" && b.type === "tool_use") out.push(b)
+    }
+    return out.length > 0 ? out : null
+  }
+  return null
+}
+
+// parseArgs turns a chat/Responses arguments string into an object so the
+// drop table applies inside it; anything unparseable stays as it was.
+function parseArgs(v) {
+  if (typeof v !== "string" || v.length > 4000000) return v
+  try { return JSON.parse(v) } catch (e) { return v }
+}
+
+// hashReplyGroup hashes one logical reply. scope "full" (the default)
+// hashes the turns whole. scope "tools" hashes only the turns' tool calls
+// — name and arguments, volatile keys in the drop table still removed —
+// when the reply contains any, so narration reworded between rounds no
+// longer breaks the count; a reply with no tool call keeps its full
+// content, so two different text replies never compare equal.
+function hashReplyGroup(turns, c, st, protocol) {
+  let source = turns
+  if (c.scope === "tools") {
+    const calls = []
+    for (let i = 0; i < turns.length; i++) {
+      const cs = callsOf(turns[i], protocol)
+      if (cs !== null) {
+        for (let j = 0; j < cs.length; j++) calls.push(cs[j])
+      }
+    }
+    if (calls.length > 0) source = [calls]
+  }
+  let out = null
+  for (let i = 0; i < source.length; i++) {
+    const h = hashTurn(source[i], c.drop, st)
+    if (st.over) return [0, 0]
+    out = out === null ? h : combine(out, h)
+  }
+  return out
 }
 
 // hashTurn feeds one turn's canonical form — its structure and content,

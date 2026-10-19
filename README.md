@@ -33,7 +33,7 @@ flowchart TD
 2. 从最新一条消息向前扫描。助手回复去掉易变字段后比较内容；工具结果跳过；用户发言默认跳过，`stopOnUser` 为 `true` 时在此停止。遇到第一条不同的回复即停止扫描。
 3. 相同回复的连续数量达到 `threshold` 时，调用 `ctx.reject` 拒绝请求。历史里最新一条回复就是模型上一次的输出。达到阈值时，被拒绝的是会产出下一次重复的请求：第 N 次重复已经发生，第 N+1 次不再发生。
 
-说明：比较前会去掉 `id`、`signature`、`usage` 等每轮必变的字段。死循环里这些字段每轮都不同，不去掉就无法认出“同一条回复”。剩余内容流式喂入两个 32 位哈希（FNV-1a 与 djb2 变体），两个值都相同才视为同一条回复。
+说明：“同一条回复”的默认含义是整条消息逐字相同（去掉 `id`、`signature`、`usage` 等每轮必变的字段后）。剩余内容流式喂入两个 32 位哈希（FNV-1a 与 djb2 变体），两个值都相同才视为同一条回复。`scope` 设为 `"tools"` 时，只要工具调用相同即算同一条，不再要求文字一致。
 
 ## 安装
 
@@ -72,6 +72,7 @@ magpie plugin options loop-guard '{"targets":["deepseek/*"],"threshold":5}'
 | `scan` | `500` | 最多向前检查这么多条消息；超出上限的消息不参与计数 |
 | `maxChars` | `4000000` | 参与比较的字符总量上限，超出按“不确定”放行 |
 | `stopOnUser` | `false` | `true` 表示向前检查遇到用户发言就停止计数，计数范围更保守 |
+| `scope` | `"full"` | `"full"`：整条回复逐字相同才算同一条。`"tools"`：只比较工具调用的名称与参数，适合“连续 6 次调用 ls 但每次说法不同”的场景。这种模式下，叙述文字的措辞变化不再打断计数。`"tools"` 下没有工具调用的回复仍按全文比较，两条不同的文字回复不会被判为同一条。配合 `"ignore"` 可忽略工具参数里的注解字段（如 bash 工具的 `description`）。chat 与 responses 的参数在报文里是 JSON 字符串，比较前会先解析，`ignore` 对参数内部同样生效 |
 | `ignore` | `[]` | 在默认易变字段表之外，比较时额外忽略的字段名 |
 
 示例——只保护 DeepSeek 的 deepseek-chat，重复 3 次就拒绝，先只记录：
@@ -133,7 +134,7 @@ agent 收到一个 400 错误，格式与该 agent 所用 API 的错误格式一
 
 ## 测试与 CI
 
-同一份 `cases.json`（26 个用例）在三种引擎里运行，CI 在每次推送时执行：
+同一份 `cases.json`（33 个用例）在三种引擎里运行，CI 在每次推送时执行：
 
 ```sh
 node test.mjs            # node(CI 里另有 22/24 矩阵)
@@ -144,7 +145,9 @@ cd verify && go run . -bench    # 大请求体的单次耗时基准
 
 - `verify/` 是独立的 Go 验证器，依赖 magpie 同款的 [moejs](https://github.com/Calcium-Ion/moejs) 引擎，按网关的调用路径（`moejs.Compile` → `rt.Load` → `onRequest(body, ctx)`）运行同一份用例。
 - 用例覆盖四种协议的工具循环，以及阈值边界：4 次相同回复放行，5 次拒绝。
-- 用例覆盖选项行为：`targets` 与 `agents` 的匹配、`mode:"log"`、自定义 `status`、`message`、`threshold`、`stopOnUser`、`ignore`、字符预算放行、无历史与空请求体。
+- 用例覆盖选项行为：`targets` 与 `agents` 的匹配、`mode:"log"`、自定义 `status`、`message`、`threshold`、`stopOnUser`、`ignore` 深入工具参数内部、字符预算放行、无历史与空请求体。
+- 用例覆盖 `scope` 的两种取值：改写叙述后 `"tools"` 仍计数，`"full"` 打断计数。
+- 用例覆盖 `"tools"` 的边界：没有工具调用的回复仍按全文比较。两条不同的文字回复不会被误判为同一条。
 - 用例覆盖判定规则：只有易变字段不同的两条回复视为同一条；不同回复打断计数。
 - CI 的 `moejs` 任务含一条成本红线：大请求体的单次钩子超过 25 ms 即失败。
 - 部署资产也检查：`shellcheck` 与 `bash -n` 检查两个安装脚本，`docker compose config` 校验 compose 文件。
@@ -155,7 +158,7 @@ cd verify && go run . -bench    # 大请求体的单次耗时基准
 magpie-loop-guard/
 ├── loop-guard.middleware.js   # 中间件本体(magpie 加载的唯一文件)
 ├── package.json               # magpie.middleware 入口与示例选项
-├── cases.json                 # 26 个用例(三种引擎共用)
+├── cases.json                 # 33 个用例(三种引擎共用)
 ├── test.mjs                   # node/bun 测试器
 ├── verify/                    # Go + moejs 验证器与基准(CI 的 moejs 任务)
 ├── deploy/                    # docker-compose、注入脚本、远端安装器

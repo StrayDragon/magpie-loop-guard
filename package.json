@@ -1,10 +1,22 @@
 {
   "name": "magpie-loop-guard",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Break LLM loops as magpie gateway middleware: when a model has returned the same reply N times in a row in one session, refuse the next request (LLM 死循环保护)",
   "type": "module",
-  "files": ["loop-guard.middleware.js", "README.md"],
-  "keywords": ["magpie", "magpie-plugin", "magpie-middleware", "loop", "loop-guard", "repeat", "guard", "llm-gateway"],
+  "files": [
+    "loop-guard.middleware.js",
+    "README.md"
+  ],
+  "keywords": [
+    "magpie",
+    "magpie-plugin",
+    "magpie-middleware",
+    "loop",
+    "loop-guard",
+    "repeat",
+    "guard",
+    "llm-gateway"
+  ],
   "license": "MIT",
   "author": "StrayDragon",
   "homepage": "https://github.com/StrayDragon/magpie-loop-guard#readme",
@@ -19,7 +31,9 @@
   "magpie": {
     "middleware": "./loop-guard.middleware.js",
     "options": {
-      "targets": ["*"],
+      "targets": [
+        "*"
+      ],
       "threshold": 5,
       "mode": "reject"
     }
