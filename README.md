@@ -55,27 +55,65 @@ magpie plugin    # 确认列表里有 loop-guard(Gateway middleware)
 
 ## 配置
 
-选项保存在 plugins.json 里该插件的 `options`。修改入口有两个：应用里 Plugins → Installed → 该中间件的 Options 按钮；或命令行：
+选项保存在 plugins.json 里该插件的 `options`。修改入口：应用里 Plugins → Installed → 该中间件的 Options 按钮（JSON 编辑器），或命令行：
 
 ```sh
-magpie plugin options loop-guard '{"targets":["deepseek/*"],"threshold":5}'
+magpie plugin options loop-guard '{…}'
 ```
+
+### 按模型组配置（models）
+
+顶层字段是默认值；`models` 是一个规则数组，按书写顺序匹配请求的模型名，**首个命中的规则生效**。规则里只写要改的字段，其余继承顶层。
+
+`targets`（任何一层）的语义固定：**未填 = 全部模型；`[]` = 不保护任何模型**。所以“只保护列出的模型”的写法是顶层 `targets: []` 加 `models` 规则。`agents` 同理。
+
+推荐的起步配置——只保护 fusionxparks 供应商，重复 5 次熔断，忽略叙述差异：
+
+```json
+{
+  "targets": [],
+  "models": [
+    {
+      "targets": ["fusionxparks/*"],
+      "threshold": 5,
+      "scope": "tools",
+      "ignore": ["description"]
+    }
+  ]
+}
+```
+
+多组模型、各自阈值与模式：
+
+```json
+{
+  "targets": [],
+  "models": [
+    { "targets": ["fusionxparks/*"], "threshold": 5, "scope": "tools", "ignore": ["description"] },
+    { "targets": ["deepseek/*"], "threshold": 3 },
+    { "targets": ["/^anthropic\\/claude-opus/"], "mode": "log" }
+  ]
+}
+```
+
+### 全部选项
 
 | 选项 | 默认值 | 含义 |
 | --- | --- | --- |
-| `targets` | `["*"]` | 按请求的模型名（`ctx.model`）匹配，支持 `*` 通配，大小写不敏感；也接受单个字符串。magpie 的模型名是 `provider/model` 形式：`"deepseek/*"` 只匹配 DeepSeek 供应商，`"*/deepseek-chat"` 只匹配这个模型，也可以写完整名称 `"deepseek/deepseek-chat"` |
-| `agents` | `[]` | 只对列出的 agent 生效（如 `["claude-code"]`，也接受单个字符串）；空列表表示全部 agent |
+| `models` | 未填 | 规则数组，按序首个命中生效；未填时按顶层字段保护全部模型。规则可用的字段与顶层相同（`targets`、`threshold`、`scope`、`mode`、`status`、`message`、`scan`、`maxChars`、`stopOnUser`、`ignore`），未写的继承顶层 |
+| `targets` | `["*"]` | 匹配请求的模型名（`ctx.model`）。写法：大小写不敏感的 `*` 通配（`"deepseek/*"`、`"*/deepseek-chat"`、完整名称）；或 `/正则/`（区分大小写，与 model-map 的 `/pattern/` 惯例一致）。未填 = 全部；`[]` = 不保护。`agents` 的语义相同 |
+| `agents` | 未填 | 只对列出的 agent 生效；未填 = 全部，`[]` = 不保护 |
 | `threshold` | `5` | 连续相同回复达到这个数量后，拒绝后续请求；低于 2 的值按 2 处理 |
+| `scope` | `"full"` | `"full"`：整条回复逐字相同才算同一条。`"tools"`：只比较工具调用的名称与参数，适合“连续 6 次调用 ls 但每次说法不同”的场景。`"tools"` 下没有工具调用的回复仍按全文比较，两条不同的文字回复不会被判为同一条 |
+| `ignore` | `[]` | 在默认易变字段表之外，比较时额外忽略的字段名；顶层与规则的并集。chat 与 responses 的工具参数是 JSON 字符串，比较前会先解析，`ignore` 对参数内部生效 |
 | `status` | `400` | 拒绝时返回的 HTTP 状态码。不用 429：多数 agent 会对 429 自动退避重试，与打断循环的目的相反 |
 | `message` | 内置文案 | 自定义拒绝说明；默认文案写明次数与处理办法 |
 | `mode` | `"reject"` | `"log"` 表示只记录不拒绝。首次使用宜先观察几天日志，确认无误伤后改回 `"reject"` |
-| `scan` | `500` | 最多向前检查这么多条消息；超出上限的消息不参与计数 |
+| `scan` | `500` | 最多向前检查多少条消息；超出上限的消息不参与计数 |
 | `maxChars` | `4000000` | 参与比较的字符总量上限，超出按“不确定”放行 |
 | `stopOnUser` | `false` | `true` 表示向前检查遇到用户发言就停止计数，计数范围更保守 |
-| `scope` | `"full"` | `"full"`：整条回复逐字相同才算同一条。`"tools"`：只比较工具调用的名称与参数，适合“连续 6 次调用 ls 但每次说法不同”的场景。这种模式下，叙述文字的措辞变化不再打断计数。`"tools"` 下没有工具调用的回复仍按全文比较，两条不同的文字回复不会被判为同一条。配合 `"ignore"` 可忽略工具参数里的注解字段（如 bash 工具的 `description`）。chat 与 responses 的参数在报文里是 JSON 字符串，比较前会先解析，`ignore` 对参数内部同样生效 |
-| `ignore` | `[]` | 在默认易变字段表之外，比较时额外忽略的字段名 |
 
-示例——只保护 DeepSeek 的 deepseek-chat，重复 3 次就拒绝，先只记录：
+示例——DeepSeek 重复 3 次就拒绝，先只记录：
 
 ```sh
 magpie plugin options loop-guard '{"targets":["*/deepseek-chat"],"threshold":3,"mode":"log"}'
@@ -134,7 +172,7 @@ agent 收到一个 400 错误，格式与该 agent 所用 API 的错误格式一
 
 ## 测试与 CI
 
-同一份 `cases.json`（33 个用例）在三种引擎里运行，CI 在每次推送时执行：
+同一份 `cases.json`（42 个用例）在三种引擎里运行，CI 在每次推送时执行：
 
 ```sh
 node test.mjs            # node(CI 里另有 22/24 矩阵)
@@ -145,7 +183,8 @@ cd verify && go run . -bench    # 大请求体的单次耗时基准
 
 - `verify/` 是独立的 Go 验证器，依赖 magpie 同款的 [moejs](https://github.com/Calcium-Ion/moejs) 引擎，按网关的调用路径（`moejs.Compile` → `rt.Load` → `onRequest(body, ctx)`）运行同一份用例。
 - 用例覆盖四种协议的工具循环，以及阈值边界：4 次相同回复放行，5 次拒绝。
-- 用例覆盖选项行为：`targets` 与 `agents` 的匹配、`mode:"log"`、自定义 `status`、`message`、`threshold`、`stopOnUser`、`ignore` 深入工具参数内部、字符预算放行、无历史与空请求体。
+- 用例覆盖 `models` 规则的首个命中、继承与顶层 `targets: []` 的放行语义、`/正则/` 与无法编译模式的处理。
+- 用例覆盖选项行为：`agents` 的匹配、`mode:"log"`、自定义 `status`、`message`、`threshold`、`stopOnUser`、`ignore` 深入工具参数内部、字符预算放行、无历史与空请求体。
 - 用例覆盖 `scope` 的两种取值：改写叙述后 `"tools"` 仍计数，`"full"` 打断计数。
 - 用例覆盖 `"tools"` 的边界：没有工具调用的回复仍按全文比较。两条不同的文字回复不会被误判为同一条。
 - 用例覆盖判定规则：只有易变字段不同的两条回复视为同一条；不同回复打断计数。
@@ -158,7 +197,7 @@ cd verify && go run . -bench    # 大请求体的单次耗时基准
 magpie-loop-guard/
 ├── loop-guard.middleware.js   # 中间件本体(magpie 加载的唯一文件)
 ├── package.json               # magpie.middleware 入口与示例选项
-├── cases.json                 # 33 个用例(三种引擎共用)
+├── cases.json                 # 42 个用例(三种引擎共用)
 ├── test.mjs                   # node/bun 测试器
 ├── verify/                    # Go + moejs 验证器与基准(CI 的 moejs 任务)
 ├── deploy/                    # docker-compose、注入脚本、远端安装器

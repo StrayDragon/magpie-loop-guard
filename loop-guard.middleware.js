@@ -15,14 +15,24 @@
 //   - 比较前去掉 id、signature、usage 等每次必变的字段,只比内容;
 //     任何"算不出来"(预算超限)都按不确定处理,放行而不是拒绝。
 //
-// 选项(ctx.options,plugins.json 里该插件的 options):
+// 选项(ctx.options,plugins.json 里该插件的 options)。顶层是默认值,
+// models 里按模型组覆盖;一条规则只写它要改的字段,其余继承顶层。
 //
 //   {
-//     "targets": ["*"],      // 按请求的模型名匹配(ctx.model;magpie 的模型名是
-//                            // "provider/model" 形式),支持 * 通配:
-//                            // "deepseek/*"、"*/deepseek-chat"、确切全名
-//     "agents": [],          // 只对某些 agent 生效(可省),如 ["claude-code"];空为全部
-//     "threshold": 5,        // 连续相同回复达到几次后拒绝后续请求(最小按 2 算)
+//     "targets": ["*"],      // 匹配请求的模型名(ctx.model;magpie 的模型名是
+//                            // "provider/model" 形式)。任何一层的 targets:
+//                            // 未填 = 全部模型,[] = 不保护任何模型。
+//                            // 写法:大小写不敏感的 * 通配,或 /正则/(区分
+//                            // 大小写,与 model-map 的 /pattern/ 一致)
+//     "models": [            // 可选:按模型组的规则,按书写顺序匹配,
+//       {"targets": ["deepseek/*"], "threshold": 3, "scope": "tools"},
+//       {"targets": ["/^anthropic\\/claude/"], "mode": "log"},
+//       {"targets": ["zhipu/*"], "ignore": ["x_seed"]}
+//     ],
+//     "threshold": 5,        // 以下为顶层默认值,规则可逐条覆盖
+//     "scope": "full",       // "tools":只比较工具调用(名称+参数),叙述文字的
+//                            // 措辞变化不再打断计数;配合 "ignore" 还能忽略
+//                            // 工具参数里的注解字段(如 bash 的 description)
 //     "scan": 500,           // 最多回看多少条消息(成本上限)
 //     "maxChars": 4000000,   // 参与比较的字符总量上限,超出按"不确定"放行
 //     "status": 400,         // 拒绝时的 HTTP 状态码。特意不用 429:多数 agent
@@ -30,10 +40,10 @@
 //     "message": "",         // 自定义拒绝消息;默认说明次数与处理办法
 //     "mode": "reject",      // "log":只记录不拒绝,先试运行观察会不会误伤
 //     "stopOnUser": false,   // true:回看遇到真实用户发言就停止计数(更保守)
-//     "scope": "full",       // "tools":只比较工具调用(名称+参数),叙述文字的
-//                            // 措辞变化不再打断计数;配合 "ignore" 还能忽略
-//                            // 工具参数里的注解字段(如 bash 的 description)
-//     "ignore": []           // 在默认表之外,比较时额外忽略的字段名
+//     "ignore": [],          // 在默认表之外,比较时额外忽略的字段名(顶层与
+//                            // 规则的并集)
+//     "agents": []           // 只对某些 agent 生效(可省),如 ["claude-code"];
+//                            // 未填 = 全部,[] = 不保护任何 agent
 //   }
 
 // DEFAULT_IGNORE 是比较回复时忽略的易变字段:同一次死循环里,这些字段
@@ -63,9 +73,10 @@ const imul = typeof Math.imul === "function"
 
 export function onRequest(body, ctx) {
   if (!body || typeof body !== "object" || Array.isArray(body)) return
-  const c = cfg(ctx)
-  if (!globOK(ctx && ctx.model, c.targets)) return
-  if (c.agents.length > 0 && !globOK(ctx && ctx.agent, c.agents)) return
+  const built = cfg(ctx)
+  if (!matchTargets(ctx && ctx.agent, built.agents)) return
+  const c = pick(built, ctx && ctx.model)
+  if (c === null) return
   const list = turnsArray(body, ctx && ctx.protocol)
   if (list === null) return
   const run = countTail(list, c, { walk: 0, chars: 0, max: c.maxChars, over: false }, ctx.protocol)
@@ -96,32 +107,62 @@ function cfg(ctx) {
   return cached.c
 }
 
+// build compiles the options once per runtime into an ordered list of
+// per-model rules plus one global fallback. A request picks the first
+// rule whose targets match its model; with no match — or when there are
+// no rules — the top-level fields apply. At every level, targets left
+// out means every model and an empty list means none, so a top-level
+// "targets": [] with rules underneath guards exactly the listed models.
 function build(o) {
-  const c = {}
-  let targets = strList(o.targets)
-  if (targets.length === 0) targets = ["*"]
-  c.targets = targets
-  c.agents = strList(o.agents)
-  let th = Math.floor(Number(o.threshold))
-  c.threshold = th >= 2 ? th : 5
-  let sc = Math.floor(Number(o.scan))
-  c.scan = sc >= 1 ? sc : 500
-  let mc = Math.floor(Number(o.maxChars))
-  c.maxChars = mc >= 1 ? mc : 4000000
-  let st = Math.floor(Number(o.status))
-  c.status = st >= 400 && st <= 599 ? st : 400
-  c.message = typeof o.message === "string" ? o.message : ""
-  c.mode = o.mode === "log" ? "log" : "reject"
-  c.scope = o.scope === "tools" ? "tools" : "full"
-  c.stopOnUser = o.stopOnUser === true
-  const drop = {}
-  for (let i = 0; i < DEFAULT_IGNORE.length; i++) drop[DEFAULT_IGNORE[i]] = 1
-  const extra = Array.isArray(o.ignore) ? o.ignore : []
-  for (let i = 0; i < extra.length; i++) {
-    if (typeof extra[i] === "string" && extra[i]) drop[extra[i]] = 1
+  const base = oneCfg(o, null)
+  base.agents = listOf(o, null, "agents")
+  base.drop = dropOf(o, null)
+  const out = { agents: base.agents, global: base, rules: [] }
+  const models = Array.isArray(o.models) ? o.models : []
+  for (let i = 0; i < models.length; i++) {
+    const m = models[i]
+    if (!m || typeof m !== "object" || Array.isArray(m)) continue
+    const rule = oneCfg(m, base)
+    rule.targets = listOf(m, base.targets, "targets")
+    rule.drop = dropOf(m, base)
+    out.rules.push(rule)
   }
-  c.drop = drop
-  return c
+  return out
+}
+
+// pick returns the config of the first rule matching the model, then the
+// global one — whose own targets decide the no-rule and top-level []
+// cases. null means nothing guards this model and the request passes.
+function pick(built, model) {
+  for (let i = 0; i < built.rules.length; i++) {
+    if (matchTargets(model, built.rules[i].targets)) return built.rules[i]
+  }
+  if (matchTargets(model, built.global.targets)) return built.global
+  return null
+}
+
+// listOf reads one matching field (targets, agents): left out means every
+// model, an empty list (or one with no usable entries) means none, a bare
+// string is one entry, entries may be globs with * or /regular
+// expressions/. The inherited base is the already-resolved shape from the
+// level above, so a models entry without targets takes the top level's.
+function listOf(o, base, name) {
+  if (o && typeof o === "object" && o[name] !== undefined) {
+    const l = strList(o[name])
+    if (l.length > 0) return { list: l }
+    return { none: true }
+  }
+  if (base) return base
+  return { all: true }
+}
+
+// matchTargets is listOf's runtime side: an object from listOf on the
+// the left, a name on the right. agent matches work the same way.
+function matchTargets(name, t) {
+  if (!t) return true
+  if (t.all) return true
+  if (t.none) return false
+  return globOK(name, t.list)
 }
 
 function strList(v) {
@@ -129,18 +170,98 @@ function strList(v) {
   if (typeof v === "string") v = [v] // 一个字符串当作单项列表,输入宽容
   if (!Array.isArray(v)) return out
   for (let i = 0; i < v.length; i++) {
-    if (typeof v[i] === "string" && v[i]) out.push(v[i].toLowerCase())
+    if (typeof v[i] === "string" && v[i]) out.push(normPattern(v[i]))
   }
   return out
 }
+
+// normPattern lowercases a glob, and compiles a /regular expression/
+// into an object once, at build time. A pattern that fails to compile is
+// dropped: a broken guard must never take the request path down.
+function normPattern(p) {
+  if (p.length > 2 && p.charAt(0) === "/" && p.charAt(p.length - 1) === "/") {
+    const body = p.slice(1, p.length - 1)
+    try {
+      return { re: new RegExp(body) }
+    } catch (e) {
+      return ""
+    }
+  }
+  return p.toLowerCase()
+}
+
+// num reads one numeric option: present and valid wins, then the level
+// above, then the fallback.
+function num(o, base, name, fallback, ok) {
+  if (o && typeof o === "object" && o[name] !== undefined) {
+    const v = Math.floor(Number(o[name]))
+    if (ok(v)) return v
+  }
+  if (base && base[name] !== undefined) return base[name]
+  return fallback
+}
+
+// oneCfg normalizes one level (the top level, or one models entry) into
+// a concrete config; fields the level leaves out are inherited from base
+// (null at the top level), so a rule can name a model group and change
+// one number while everything else stays as configured above it.
+function oneCfg(o, base) {
+  const has = (name) => o && typeof o === "object" && o[name] !== undefined
+  const inh = (name) => (base && base[name] !== undefined ? base[name] : undefined)
+  const c = {}
+  c.threshold = num(o, base, "threshold", 5, (v) => v >= 2)
+  c.scan = num(o, base, "scan", 500, (v) => v >= 1)
+  c.maxChars = num(o, base, "maxChars", 4000000, (v) => v >= 1)
+  c.status = num(o, base, "status", 400, (v) => v >= 400 && v <= 599)
+  if (has("message") && typeof o.message === "string") c.message = o.message
+  else if (inh("message") !== undefined) c.message = inh("message")
+  else c.message = ""
+  if (o && o.mode === "log") c.mode = "log"
+  else if (o && o.mode === "reject") c.mode = "reject"
+  else if (inh("mode") !== undefined) c.mode = inh("mode")
+  else c.mode = "reject"
+  if (has("scope") && (o.scope === "tools" || o.scope === "full")) c.scope = o.scope
+  else if (inh("scope") !== undefined) c.scope = inh("scope")
+  else c.scope = "full"
+  if (has("stopOnUser")) c.stopOnUser = o.stopOnUser === true
+  else if (inh("stopOnUser") !== undefined) c.stopOnUser = inh("stopOnUser")
+  else c.stopOnUser = false
+  c.targets = listOf(o, base ? base.targets : null, "targets")
+  c.drop = dropOf(o, base)
+  return c
+}
+
+// dropOf builds the volatile-key table: the built-in list, then every
+// name the top level and (for a rule) the models entry adds.
+function dropOf(o, base) {
+  const drop = {}
+  for (let i = 0; i < DEFAULT_IGNORE.length; i++) drop[DEFAULT_IGNORE[i]] = 1
+  const levels = base ? [base, o] : [o]
+  for (let l = 0; l < levels.length; l++) {
+    const src = levels[l]
+    if (!src || typeof src !== "object") continue
+    const extra = Array.isArray(src.ignore) ? src.ignore
+      : typeof src.ignore === "string" ? [src.ignore] : []
+    for (let i = 0; i < extra.length; i++) {
+      if (typeof extra[i] === "string" && extra[i]) drop[extra[i]] = 1
+    }
+  }
+  return drop
+}
+
 
 // globOK tells whether name matches any pattern; patterns are matched
 // case-insensitively, * stands for any run of characters. An empty name
 // matches only patterns that are empty or exactly "*".
 function globOK(name, pats) {
   const n = String(name || "").toLowerCase()
+  const raw = String(name || "")
   for (let i = 0; i < pats.length; i++) {
     const p = pats[i]
+    if (typeof p !== "string") {
+      if (p && p.re && p.re.test(raw)) return true
+      continue
+    }
     if (p === "*" || p === n) return true
     if (p.indexOf("*") < 0) continue
     const parts = p.split("*")
