@@ -2,3 +2,7 @@ node_modules/
 *.log
 .DS_Store
 Thumbs.db
+
+# install-remote.sh 的 bind 方式默认把文件下到 ./magpie-loop-guard;
+# 在克隆里运行时防止误提交这个嵌套副本。
+magpie-loop-guard/
