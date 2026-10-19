@@ -14,6 +14,26 @@
 
 ## 快速开始
 
+### 不想 clone?一条命令(可选卷映射方式)
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/StrayDragon/magpie-loop-guard/main/deploy/install-remote.sh -o install-remote.sh
+bash install-remote.sh                 # 交互式选方式;或直接:
+bash install-remote.sh --method copy   # 方式一(默认):文件进 /config 卷
+bash install-remote.sh --method bind   # 方式二:宿主机目录挂载
+```
+
+|  | `copy`(默认) | `bind` |
+| --- | --- | --- |
+| 文件在哪 | 容器 `/config` 卷里 | 宿主机目录(`--dir`,默认 `./magpie-loop-guard`) |
+| 改 compose | 不需要 | 加一行 `volumes:` 并重建容器(脚本给出确切的行) |
+| 持久性 | 随卷持久(容器重建/升级都在);清卷后重跑本脚本 | 跟随宿主机目录 |
+| 升级 | 重跑本脚本 | `git pull`/重跑,文件变化被网关热重载 |
+
+脚本会自动发现运行中的 magpie 容器(或 `-c` 指定)、下载文件(支持 `--mirror <前缀>` raw 加速、`--ref <tag>` 钉版本),再在容器内执行幂等安装(不覆盖界面改过的配置)。在意 `curl | bash` 的话,上面第一条就是先下载后执行,可先打开检查。
+
+### 方式 A:clone + compose
+
 ```sh
 git clone https://github.com/StrayDragon/magpie-loop-guard.git
 cd magpie-loop-guard
