@@ -51,7 +51,9 @@ magpie plugin add github:StrayDragon/magpie-loop-guard
 magpie plugin    # 确认列表里有 loop-guard(Gateway middleware)
 ```
 
-也可以在应用里操作：Plugins → Add a plugin → 选择文件夹。安装后默认生效（全部模型，阈值 5）。
+也可以在应用里操作：Plugins → Add a plugin → 选择文件夹。
+
+**配置则生效**：本插件遵循白名单约定——写了的选项才生效，不写任何 options 就不拦截。Options 编辑器会预填建议配置（`targets: ["*"]`，保护全部模型，阈值 5），保存一次即对全部模型生效。
 
 ## 配置
 
@@ -100,9 +102,9 @@ magpie plugin options loop-guard '{…}'
 
 | 选项 | 默认值 | 含义 |
 | --- | --- | --- |
-| `models` | 未填 | 规则数组，按序首个命中生效；未填时按顶层字段保护全部模型。规则可用的字段与顶层相同（`targets`、`threshold`、`scope`、`mode`、`status`、`message`、`scan`、`maxChars`、`stopOnUser`、`ignore`），未写的继承顶层 |
-| `targets` | `["*"]` | 匹配请求的模型名（`ctx.model`）。写法：大小写不敏感的 `*` 通配（`"deepseek/*"`、`"*/deepseek-chat"`、完整名称）；或 `/正则/`（区分大小写，与 model-map 的 `/pattern/` 惯例一致）。未填 = 全部；`[]` = 不保护。`agents` 的语义相同 |
-| `agents` | 未填 | 只对列出的 agent 生效；未填 = 全部，`[]` = 不保护 |
+| `models` | 未填 | 规则数组，按序首个命中生效，规则自带 `targets`（未写继承顶层——顶层也未写时该规则不保护任何模型）。规则可用的字段与顶层相同（`targets`、`threshold`、`scope`、`mode`、`status`、`message`、`scan`、`maxChars`、`stopOnUser`、`ignore`），未写的继承顶层 |
+| `targets` | 未写 | 保护对象名单：未写/`null`/`""` = 不保护任何模型；`[]` = 保护全部；`["模式", …]` = 只保护匹配的模型。匹配请求的模型名（`ctx.model`），写法为大小写不敏感的 `*` 通配（`"deepseek/*"`、`"*/deepseek-chat"`、完整名称）或 `/正则/`（区分大小写，与 model-map 的 `/pattern/` 惯例一致） |
+| `agents` | 未写 | 收窄范围：未写/`null`/`""`/`[]` = 所有 agent 都在范围内；`["claude-code"]` = 仅匹配的 agent |
 | `threshold` | `5` | 连续相同回复达到这个数量后，拒绝后续请求；低于 2 的值按 2 处理 |
 | `scope` | 未填 = 全部参与 | 选择比较回复的哪些方面，数组任选：`"text"`（文字）、`"thinking"`（思考）、`"tools"`（工具调用名称与参数），顺序无关。兼容旧写法：未填或 `"full"` 等于三项全选，`"tools"` 等于 `["tools"]`；`[]` 表示该规则永不触发，即完全放行。chat 与 responses 的工具参数是 JSON 字符串，比较前会先解析，`ignore` 对参数内部生效 |
 
@@ -174,7 +176,7 @@ agent 收到一个 400 错误，格式与该 agent 所用 API 的错误格式一
 
 ## 测试与 CI
 
-同一份 `cases.json`（49 个用例）在三种引擎里运行，CI 在每次推送时执行：
+同一份 `cases.json`（56 个用例）在三种引擎里运行，CI 在每次推送时执行：
 
 ```sh
 node test.mjs            # node(CI 里另有 22/24 矩阵)
@@ -185,7 +187,7 @@ cd verify && go run . -bench    # 大请求体的单次耗时基准
 
 - `verify/` 是独立的 Go 验证器，依赖 magpie 同款的 [moejs](https://github.com/Calcium-Ion/moejs) 引擎，按网关的调用路径（`moejs.Compile` → `rt.Load` → `onRequest(body, ctx)`）运行同一份用例。
 - 用例覆盖四种协议的工具循环，以及阈值边界：4 次相同回复放行，5 次拒绝。
-- 用例覆盖 `models` 规则的首个命中、继承与顶层 `targets: []` 的放行语义、`/正则/` 与无法编译模式的处理。
+- 用例覆盖 `models` 规则的首个命中、继承、`/正则/` 与无法编译模式的处理，以及约定语义：不写/`null`/`""` 不保护、`targets: []` 保护全部、`agents: []` 不收窄。
 - 用例覆盖选项行为：`agents` 的匹配、`mode:"log"`、自定义 `status`、`message`、`threshold`、`stopOnUser`、`ignore` 深入工具参数内部、字符预算放行、无历史与空请求体。
 - 用例覆盖 `scope` 的字符串与数组两种写法：改写叙述后 `"tools"` 与 `["tools"]` 仍计数，`"full"` 打断计数。
 - 用例覆盖 `scope` 数组的边界：思考文本每轮变化时 `["text","tools"]` 仍计数；`["text"]` 忽略工具参数变化；`[]` 永不触发；全部未知条目回退全文比较；chat 的 reasoning_content 与 gemini 的 thought 按 `"thinking"` 方面处理。
@@ -200,7 +202,7 @@ cd verify && go run . -bench    # 大请求体的单次耗时基准
 magpie-loop-guard/
 ├── loop-guard.middleware.js   # 中间件本体(magpie 加载的唯一文件)
 ├── package.json               # magpie.middleware 入口与示例选项
-├── cases.json                 # 49 个用例(三种引擎共用)
+├── cases.json                 # 56 个用例(三种引擎共用)
 ├── test.mjs                   # node/bun 测试器
 ├── verify/                    # Go + moejs 验证器与基准(CI 的 moejs 任务)
 ├── deploy/                    # docker-compose、注入脚本、远端安装器

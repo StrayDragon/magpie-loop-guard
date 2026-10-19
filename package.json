@@ -1,6 +1,6 @@
 {
   "name": "magpie-loop-guard",
-  "version": "0.3.0",
+  "version": "1.0.0",
   "description": "Break LLM loops as magpie gateway middleware: when a model has returned the same reply N times in a row in one session, refuse the next request (LLM 死循环保护)",
   "type": "module",
   "files": [

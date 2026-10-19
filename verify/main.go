@@ -234,8 +234,11 @@ func runBench(file string) {
 	}
 	body, _ := json.Marshal(map[string]any{"model": "claude-sonnet-4", "stream": true, "messages": msgs})
 	captured := &rejectBox{}
+	// 显式 targets ["*"]:按"配置则生效"约定,空 options 时闸门直接放行,
+	// 那条路径不是这里要测的扫描成本。
 	ctx, err := requestCtx(rt, realm, map[string]any{
 		"protocol": "anthropic", "model": "anthropic/claude-sonnet-4", "stream": true, "path": "",
+		"options": map[string]any{"targets": []any{"*"}, "threshold": 5},
 	}, captured)
 	if err != nil {
 		t.fatalf("ctx: %v", err)

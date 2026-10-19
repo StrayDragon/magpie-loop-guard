@@ -21,7 +21,8 @@
 //   {
 //     "targets": ["*"],      // 匹配请求的模型名(ctx.model;magpie 的模型名是
 //                            // "provider/model" 形式)。任何一层的 targets:
-//                            // 未填 = 全部模型,[] = 不保护任何模型。
+//                            // 配置则生效:未写/null/"" = 不保护任何模型,
+//                            // [] = 保护全部(启用且无例外)。
 //                            // 写法:大小写不敏感的 * 通配,或 /正则/(区分
 //                            // 大小写,与 model-map 的 /pattern/ 一致)
 //     "models": [            // 可选:按模型组的规则,按书写顺序匹配,
@@ -30,9 +31,10 @@
 //       {"targets": ["zhipu/*"], "ignore": ["x_seed"]}
 //     ],
 //     "threshold": 5,        // 以下为顶层默认值,规则可逐条覆盖
-//     "scope": "full",       // "tools":只比较工具调用(名称+参数),叙述文字的
-//                            // 措辞变化不再打断计数;配合 "ignore" 还能忽略
-//                            // 工具参数里的注解字段(如 bash 的 description)
+//     "scope": ["text","tools"], // 比较回复的哪些方面,数组任选:text/thinking/
+//                            // tools,顺序无关;[] = 该规则永不触发;兼容旧写法
+//                            // ("full" = 全部参与;["tools"] = 只比较工具调用),
+//                            // 配合 "ignore" 还能忽略工具参数里的注解字段
 //     "scan": 500,           // 最多回看多少条消息(成本上限)
 //     "maxChars": 4000000,   // 参与比较的字符总量上限,超出按"不确定"放行
 //     "status": 400,         // 拒绝时的 HTTP 状态码。特意不用 429:多数 agent
@@ -42,8 +44,8 @@
 //     "stopOnUser": false,   // true:回看遇到真实用户发言就停止计数(更保守)
 //     "ignore": [],          // 在默认表之外,比较时额外忽略的字段名(顶层与
 //                            // 规则的并集)
-//     "agents": []           // 只对某些 agent 生效(可省),如 ["claude-code"];
-//                            // 未填 = 全部,[] = 不保护任何 agent
+//     "agents": []           // 收窄名单:未写/null/""/[] = 所有 agent
+//                            // 都在范围内,[模式] = 仅这些 agent(如 ["claude-code"])
 //   }
 
 // DEFAULT_IGNORE 是比较回复时忽略的易变字段:同一次死循环里,这些字段
@@ -74,7 +76,7 @@ const imul = typeof Math.imul === "function"
 export function onRequest(body, ctx) {
   if (!body || typeof body !== "object" || Array.isArray(body)) return
   const built = cfg(ctx)
-  if (!matchTargets(ctx && ctx.agent, built.agents)) return
+  if (!agentAllowed(ctx && ctx.agent, built.agents)) return
   const c = pick(built, ctx && ctx.model)
   if (c === null) return
   if (c.scope !== null && c.scope.length === 0) return // scope:[] — 完全放行
@@ -149,18 +151,34 @@ function pick(built, model) {
 // level above, so a models entry without targets takes the top level's.
 function listOf(o, base, name) {
   if (o && typeof o === "object" && o[name] !== undefined) {
-    const l = strList(o[name])
-    if (l.length > 0) return { list: l }
-    return { none: true }
+    const v = o[name]
+    if (Array.isArray(v)) {
+      const l = strList(v)
+      return l.length > 0 ? { list: l } : { all: true } // []:启用且无例外
+    }
+    if (typeof v === "string") {
+      const l = strList(v)
+      return l.length > 0 ? { list: l } : { off: true } // "":写了但为空,等同未配置
+    }
+    return { off: true } // null 或其他类型:未配置
   }
   if (base) return base
-  return { all: true }
+  return { off: true } // 未写:字段不生效
 }
 
-// matchTargets is listOf's runtime side: an object from listOf on the
-// the left, a name on the right. agent matches work the same way.
+// agentAllowed is the agents field's runtime side. agents narrows the
+// guard rather than enabling it, so off, all and the empty array all
+// mean every agent is in scope; only a non-empty list narrows.
+function agentAllowed(agent, t) {
+  if (!t || t.off || t.all) return true
+  if (t.none) return false
+  return globOK(agent, t.list)
+}
+
+// matchTargets is listOf's runtime side for the enabling fields
+// (targets): off matches nobody, all matches everybody.
 function matchTargets(name, t) {
-  if (!t) return true
+  if (!t || t.off) return false
   if (t.all) return true
   if (t.none) return false
   return globOK(name, t.list)
