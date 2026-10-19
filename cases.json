@@ -3095,5 +3095,122 @@
       "status": 400,
       "message": "3 times"
     }
+  },
+  {
+    "name": "an unknown protocol still falls back to the messages shape",
+    "request": {
+      "model": "claude-sonnet-4",
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "I will run the tests."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_0",
+              "content": "same file body"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "I will run the tests."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_1",
+              "content": "same file body"
+            }
+          ]
+        }
+      ]
+    },
+    "ctx": {
+      "protocol": "some-future-api",
+      "model": "anthropic/claude-sonnet-4",
+      "stream": true
+    },
+    "options": {
+      "threshold": 2
+    },
+    "reject": {
+      "status": 400,
+      "message": "2 times"
+    }
+  },
+  {
+    "name": "a string option is taken as a one-item list",
+    "request": {
+      "model": "claude-sonnet-4",
+      "messages": [
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "I will run the tests."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_0",
+              "content": "same file body"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "I will run the tests."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_1",
+              "content": "same file body"
+            }
+          ]
+        }
+      ]
+    },
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "anthropic/claude-sonnet-4",
+      "stream": true
+    },
+    "options": {
+      "threshold": 2,
+      "targets": "anthropic/claude-sonnet-4"
+    },
+    "reject": {
+      "status": 400,
+      "message": "2 times"
+    }
   }
 ]

@@ -45,6 +45,19 @@ const DEFAULT_IGNORE = [
   "system_fingerprint", "service_tier", "fingerprint",
 ]
 
+// imul is 32-bit integer multiply. Math.imul (ES6) is used when present;
+// the 16-bit split below is the standard fallback, so the hash works on
+// engines that lack it too. One local alias, not a patch on Math.
+const imul = typeof Math.imul === "function"
+  ? Math.imul
+  : function (x, y) {
+    const ah = (x >>> 16) & 0xffff
+    const al = x & 0xffff
+    const bh = (y >>> 16) & 0xffff
+    const bl = y & 0xffff
+    return ((al * bl) + (((ah * bl + al * bh) << 16) >>> 0) | 0)
+  }
+
 export function onRequest(body, ctx) {
   if (!body || typeof body !== "object" || Array.isArray(body)) return
   const c = cfg(ctx)
@@ -109,6 +122,7 @@ function build(o) {
 
 function strList(v) {
   const out = []
+  if (typeof v === "string") v = [v] // 一个字符串当作单项列表,输入宽容
   if (!Array.isArray(v)) return out
   for (let i = 0; i < v.length; i++) {
     if (typeof v[i] === "string" && v[i]) out.push(v[i].toLowerCase())
@@ -282,8 +296,8 @@ function hashTurn(m, drop, st) {
   const feed = (s) => {
     for (let i = 0; i < s.length; i++) {
       const ch = s.charCodeAt(i)
-      a = Math.imul(a ^ ch, 16777619)
-      b = (Math.imul(b, 33) ^ ch) | 0
+      a = imul(a ^ ch, 16777619)
+      b = (imul(b, 33) ^ ch) | 0
     }
   }
   const walk = (v) => {
@@ -337,5 +351,5 @@ function same(p, q) {
 // combine folds one turn's hash into the logical reply being accumulated
 // (a Responses reply's message and function_call, for one).
 function combine(p, h) {
-  return [(Math.imul(p[0], 31) + h[0]) | 0, (Math.imul(p[1], 33) + h[1]) | 0]
+  return [(imul(p[0], 31) + h[0]) | 0, (imul(p[1], 33) + h[1]) | 0]
 }

@@ -6,6 +6,12 @@
 //
 //	go run . -file ../loop-guard.middleware.js -cases ../cases.json
 //	go run . -file ../loop-guard.middleware.js -bench
+//
+// This is a development and CI tool; magpie never loads it, and the
+// middleware itself takes nothing from it. moejs is the only dependency,
+// pinned to an exact version, and every call into its API lives in this
+// one file — an upstream rename is a one-file, dev-only fix. The pin is
+// deliberately exact (no ranges) so CI measures the engine it names.
 package main
 
 import (
@@ -118,11 +124,11 @@ func runCases(file, casesPath string) (code int) {
 		t.fatalf("read cases: %v", err)
 	}
 	var cases []struct {
-		Name      string         `json:"name"`
-		Ctx       map[string]any `json:"ctx"`
-		Options   any            `json:"options"`
-		Request   any            `json:"request"`
-		Reject    *struct {
+		Name    string         `json:"name"`
+		Ctx     map[string]any `json:"ctx"`
+		Options any            `json:"options"`
+		Request any            `json:"request"`
+		Reject  *struct {
 			Status  int    `json:"status"`
 			Message string `json:"message"`
 		} `json:"reject"`

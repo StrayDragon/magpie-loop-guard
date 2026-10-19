@@ -33,8 +33,8 @@ magpie plugin options loop-guard '{"targets":["deepseek/*"],"threshold":5}'
 
 | 选项 | 默认 | 说明 |
 | --- | --- | --- |
-| `targets` | `["*"]` | 按请求的模型名（`ctx.model`）匹配，支持 `*` 通配，大小写不敏感。magpie 的模型名是 `provider/model` 形式，所以 `"deepseek/*"` 就是"只管 DeepSeek 这个供应商"，`"*/deepseek-chat"` 是"只管这个模型"，也可以写确切全名 `"deepseek/deepseek-chat"` |
-| `agents` | `[]` | 只对某些 agent 生效（如 `["claude-code"]`）；空为全部 |
+| `targets` | `["*"]` | 按请求的模型名（`ctx.model`）匹配，支持 `*` 通配，大小写不敏感；也接受单个字符串（等同单项列表）。magpie 的模型名是 `provider/model` 形式，所以 `"deepseek/*"` 就是"只管 DeepSeek 这个供应商"，`"*/deepseek-chat"` 是"只管这个模型"，也可以写确切全名 `"deepseek/deepseek-chat"` |
+| `agents` | `[]` | 只对某些 agent 生效（如 `["claude-code"]`，也接受单个字符串）；空为全部 |
 | `threshold` | `5` | 连续相同回复达到几次后，拒绝后续请求（最小按 2 算） |
 | `status` | `400` | 拒绝时的 HTTP 状态码。**特意不用 429**：多数 agent 会对 429 自动退避重试，那与打断循环的目的相反 |
 | `message` | 内置文案 | 自定义拒绝消息；默认文案说明次数与处理办法 |
@@ -71,6 +71,33 @@ agent 会收到一个 400 错误（其自身 API 的错误形状）：
 - 单条回复内部的复读（一次流式输出里同一句刷几千遍）不在本中间件范围内；它盯的是"跨轮一模一样"。
 - 死循环通常每轮 id、签名、用量都不同，这是默认忽略表存在的原因；若你的供应商回复里还有别的每轮必变字段，把它们加进 `ignore`。
 
+## 兼容性边界（刻意收窄的接触面）
+
+插件对上游的一切依赖都是显式列出的、官方文档内的小集合；上游在这些面之外怎么变，都不影响本插件：
+
+**对 magpie 的契约面（共 6 项，全部是插件作者文档中的公开 API）：**
+
+- 1 个钩子：`onRequest(body, ctx)`。不用 `onProvider`/`onEvent`/`onResponse`/`strategies`/`onUsage`——这些钩子的任何变化都与本插件无关，回复路径也因此零开销。
+- 5 个 ctx 字段：`protocol`、`model`、`agent`、`options`、`reject`。不读 `ctx.state`、不读任何头、不依赖 session 字段。
+- 永不改写请求体：钩子只返回 `undefined`，唯一动作是 `ctx.reject`。因此请求体形状的变化不可能经由本插件弄坏请求——最坏情形是"检测不到"，绝不改变请求与回复。
+
+**对 JS 引擎（moejs）的特性面：**
+
+- 语言下限刻意压到 ES5 + `const`/`let`/箭头函数（magpie 官方示例中间件的同款水平）：无 `?.`/`??`/展开/模板串/类/`for...of`/`Map`/`Set`/`Symbol`/正则。
+- `Math.imul` 有内联的 ES5 回退实现（引擎缺失时自动走 16 位拆分乘法）。
+- 不用定时器、`fetch`、存储、`console` 之外的任何宿主能力（`console.log` 只在 `mode:"log"` 下使用，且 magpie 侧限速）。
+
+**输入与协议漂移的容忍：**
+
+- 未知协议：回退到通用 `messages[]` + role 启发式；未知轮次形状一律按"跳过"处理，不影响计数方向。
+- 选项宽容：`targets`/`agents`/`ignore` 接受字符串或数组，`threshold` 等数值接受字符串数字，坏值一律落回默认。
+- 任何"算不出来"（预算耗尽、形状怪异）都按不确定放行——与 magpie 中间件的 fail-open 语义一致：插件自身加载失败或钩子异常时，magpie 也照常放行请求，网关永远不会因本插件而不可用。
+
+**依赖面：**
+
+- npm 包零依赖（`dependencies` 不存在）。
+- `verify/` 只有一个 Go 依赖（moejs，精确 pin），且纯属开发与 CI 工具——magpie 运行时不加载它；对 moejs API 的全部调用集中在 `verify/main.go` 一个文件里，上游改名时是一处修改。
+
 ## 让别人搜得到（magpie 的发现渠道）
 
 按 magpie 官方文档，插件有三个被用户发现的入口，按门槛从低到高：
@@ -83,7 +110,7 @@ agent 会收到一个 400 错误（其自身 API 的错误形状）：
 
 ## 测试与 CI
 
-同一份 `cases.json`（24 个用例）在**三种引擎**里跑，CI（`.github/workflows/ci.yml`）每次 push 都验证：
+同一份 `cases.json`（26 个用例）在**三种引擎**里跑，CI（`.github/workflows/ci.yml`）每次 push 都验证：
 
 ```sh
 node test.mjs                                    # node(含 JSON/包元数据检查,CI 里还有 22/24 矩阵)
@@ -103,7 +130,7 @@ cd verify && go run . -bench                     # 133 KB 大请求体的单次 
 magpie-loop-guard/
 ├── loop-guard.middleware.js   # 中间件本体(唯一被 magpie 加载的文件)
 ├── package.json               # magpie.middleware 入口与示例选项
-├── cases.json                 # 24 个用例(三种引擎共用)
+├── cases.json                 # 26 个用例(三种引擎共用)
 ├── test.mjs                   # node/bun 测试器
 ├── verify/                    # Go + moejs 验证器与基准(CI 的 moejs 任务)
 ├── .github/workflows/ci.yml   # node 矩阵 / bun / moejs+成本红线 / 交叉编译
