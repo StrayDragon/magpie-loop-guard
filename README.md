@@ -50,6 +50,13 @@ magpie plugin options loop-guard '{"targets":["deepseek/*"],"threshold":5}'
 magpie plugin options loop-guard '{"targets":["*/deepseek-chat"],"threshold":3,"mode":"log"}'
 ```
 
+## Docker 部署与界面热改配置
+
+- **能动态改**：options 存在卷上的 `plugins.json`，网关每秒感知变化并重载——界面（`:3425` → Plugins → Installed → loop-guard → Options 的 JSON 编辑器）、CLI（`magpie plugin options magpie-loop-guard '{…}'`）、开关与卸载，全部**下一个请求即生效，无需重启**。
+- **Docker/NAS 一键部署**：`deploy/` 里给了 compose + 幂等"后注入脚本"（首次自动安装并写初始 options；之后**绝不覆盖你在界面里改的配置**）。
+
+详见 **[deploy/README.md](deploy/README.md)**。
+
 ## 被拒绝时看到什么
 
 agent 会收到一个 400 错误（其自身 API 的错误形状）：
@@ -122,6 +129,7 @@ cd verify && go run . -bench                     # 133 KB 大请求体的单次 
 - `verify/` 是独立的小型 Go 验证器，直接依赖 magpie 同款的 [moejs](https://github.com/Calcium-Ion/moejs) 引擎，用与网关一致的调用路径（`moejs.Compile` → `rt.Load` → `onRequest(body, ctx)`）跑同一份用例，并带 `-bench` 基准。
 - 用例覆盖：四种协议的工具循环、阈值边界（4 过 / 5 断）、只有易变字段不同的两条回复算同一条、不同回复打断计数、`targets`/`agents` 匹配与不匹配、`mode:"log"`、自定义 `status`/`message`/`threshold`、`stopOnUser`、`ignore`、字符预算 fail-open、无历史/空请求体。
 - CI 的 `moejs` 任务里有一条**成本红线**：大请求体的单次 hook 必须远低于 250 ms 预算（>25 ms 即失败），防止后续改动悄悄引入每请求开销。
+- CI 还跑**部署资产 lint**：`shellcheck` 注入脚本、`bash -n`、`docker compose config` 校验 compose 文件。
 - 红测试已验证：故意把阈值判断改坏，8+ 用例在三种引擎同时变红。
 
 ## 仓库结构
@@ -133,7 +141,8 @@ magpie-loop-guard/
 ├── cases.json                 # 26 个用例(三种引擎共用)
 ├── test.mjs                   # node/bun 测试器
 ├── verify/                    # Go + moejs 验证器与基准(CI 的 moejs 任务)
-├── .github/workflows/ci.yml   # node 矩阵 / bun / moejs+成本红线 / 交叉编译
+├── deploy/                    # docker-compose + 幂等注入脚本(NAS/服务器)
+├── .github/workflows/ci.yml   # node 矩阵 / bun / moejs+成本红线 / 交叉编译 / 部署资产 lint
 └── README.md
 ```
 

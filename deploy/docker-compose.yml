@@ -1,0 +1,37 @@
+# deploy/docker-compose.yml — magpie + loop-guard 的一体化部署示例。
+#
+#   docker compose -f deploy/docker-compose.yml up -d
+#
+# magpie 是官方镜像(debian-slim, 非 root uid 65532, 一切状态在 /config 卷);
+# 本仓库以只读方式挂进容器,installer 是一个 one-shot 服务:首次启动把插件
+# 注进 plugins.json,之后再启动一律幂等跳过(不会覆盖你在界面里改的配置)。
+# 网关约 1 秒内感知 plugins.json 变化并装载,无需重启任何容器。
+
+services:
+  magpie:
+    image: ghcr.io/yetone/magpie:latest
+    container_name: magpie
+    ports:
+      - "3425:3425" # 网关 API + 网页(在这里的 Plugins 页改配置)
+      - "3430:3430"
+    volumes:
+      - magpie-config:/config
+      - ..:/config/magpie-loop-guard:ro # 本仓库 = 插件文件夹(只读)
+
+  installer:
+    image: ghcr.io/yetone/magpie:latest
+    depends_on:
+      magpie:
+        condition: service_healthy
+    restart: "no"
+    volumes:
+      - magpie-config:/config
+      - ..:/config/magpie-loop-guard:ro
+    environment:
+      # 首次安装时写入的初始 options;留空则用包里的建议值。
+      # 只在"未安装"时生效,之后改配置请用界面(见 deploy/README.md)。
+      LOOPGUARD_OPTIONS: '{"targets":["*"],"threshold":5,"mode":"log"}'
+    entrypoint: ["bash", "/config/magpie-loop-guard/deploy/install-loop-guard.sh"]
+
+volumes:
+  magpie-config:

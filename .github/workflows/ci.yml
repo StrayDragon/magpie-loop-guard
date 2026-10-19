@@ -60,6 +60,19 @@ jobs:
           ms=$(echo "$out" | sed -n 's/.*: \([0-9.]*\)ms per call.*/\1/p')
           awk -v ms="$ms" 'BEGIN { if (ms+0 <= 0 || ms+0 > 25) exit 1 }'
 
+  deploy-lint:
+    # the compose file and the injection script ship to users' NAS boxes;
+    # a syntax error in either should fail CI, not their first deploy
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Injection script passes shellcheck and bash -n
+        run: |
+          bash -n deploy/install-loop-guard.sh
+          shellcheck deploy/install-loop-guard.sh
+      - name: Compose file validates
+        run: docker compose -f deploy/docker-compose.yml config -q
+
   build:
     # the verifier compiles on every platform Go supports; a broken build
     # should be found by CI, not by the first Windows user
