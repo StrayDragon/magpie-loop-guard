@@ -104,7 +104,9 @@ magpie plugin options loop-guard '{…}'
 | `targets` | `["*"]` | 匹配请求的模型名（`ctx.model`）。写法：大小写不敏感的 `*` 通配（`"deepseek/*"`、`"*/deepseek-chat"`、完整名称）；或 `/正则/`（区分大小写，与 model-map 的 `/pattern/` 惯例一致）。未填 = 全部；`[]` = 不保护。`agents` 的语义相同 |
 | `agents` | 未填 | 只对列出的 agent 生效；未填 = 全部，`[]` = 不保护 |
 | `threshold` | `5` | 连续相同回复达到这个数量后，拒绝后续请求；低于 2 的值按 2 处理 |
-| `scope` | `"full"` | `"full"`：整条回复逐字相同才算同一条。`"tools"`：只比较工具调用的名称与参数，适合“连续 6 次调用 ls 但每次说法不同”的场景。`"tools"` 下没有工具调用的回复仍按全文比较，两条不同的文字回复不会被判为同一条 |
+| `scope` | 未填 = 全部参与 | 选择比较回复的哪些方面，数组任选：`"text"`（文字）、`"thinking"`（思考）、`"tools"`（工具调用名称与参数），顺序无关。兼容旧写法：未填或 `"full"` 等于三项全选，`"tools"` 等于 `["tools"]`；`[]` 表示该规则永不触发，即完全放行。chat 与 responses 的工具参数是 JSON 字符串，比较前会先解析，`ignore` 对参数内部生效 |
+
+`scope` 有两条固定规则。规则一：回复里不含所选方面时，回退为全文比较，两条不同的回复不会因“没得比”被判为同一条。规则二（示例）：`["text"]` 忽略工具参数的变化，适合参数带自增计数器的循环；`["text","tools"]` 忽略思考文本的变化，适合思考每轮都改写的循环。
 | `ignore` | `[]` | 在默认易变字段表之外，比较时额外忽略的字段名；顶层与规则的并集。chat 与 responses 的工具参数是 JSON 字符串，比较前会先解析，`ignore` 对参数内部生效 |
 | `status` | `400` | 拒绝时返回的 HTTP 状态码。不用 429：多数 agent 会对 429 自动退避重试，与打断循环的目的相反 |
 | `message` | 内置文案 | 自定义拒绝说明；默认文案写明次数与处理办法 |
@@ -172,7 +174,7 @@ agent 收到一个 400 错误，格式与该 agent 所用 API 的错误格式一
 
 ## 测试与 CI
 
-同一份 `cases.json`（42 个用例）在三种引擎里运行，CI 在每次推送时执行：
+同一份 `cases.json`（49 个用例）在三种引擎里运行，CI 在每次推送时执行：
 
 ```sh
 node test.mjs            # node(CI 里另有 22/24 矩阵)
@@ -185,7 +187,8 @@ cd verify && go run . -bench    # 大请求体的单次耗时基准
 - 用例覆盖四种协议的工具循环，以及阈值边界：4 次相同回复放行，5 次拒绝。
 - 用例覆盖 `models` 规则的首个命中、继承与顶层 `targets: []` 的放行语义、`/正则/` 与无法编译模式的处理。
 - 用例覆盖选项行为：`agents` 的匹配、`mode:"log"`、自定义 `status`、`message`、`threshold`、`stopOnUser`、`ignore` 深入工具参数内部、字符预算放行、无历史与空请求体。
-- 用例覆盖 `scope` 的两种取值：改写叙述后 `"tools"` 仍计数，`"full"` 打断计数。
+- 用例覆盖 `scope` 的字符串与数组两种写法：改写叙述后 `"tools"` 与 `["tools"]` 仍计数，`"full"` 打断计数。
+- 用例覆盖 `scope` 数组的边界：思考文本每轮变化时 `["text","tools"]` 仍计数；`["text"]` 忽略工具参数变化；`[]` 永不触发；全部未知条目回退全文比较；chat 的 reasoning_content 与 gemini 的 thought 按 `"thinking"` 方面处理。
 - 用例覆盖 `"tools"` 的边界：没有工具调用的回复仍按全文比较。两条不同的文字回复不会被误判为同一条。
 - 用例覆盖判定规则：只有易变字段不同的两条回复视为同一条；不同回复打断计数。
 - CI 的 `moejs` 任务含一条成本红线：大请求体的单次钩子超过 25 ms 即失败。
@@ -197,7 +200,7 @@ cd verify && go run . -bench    # 大请求体的单次耗时基准
 magpie-loop-guard/
 ├── loop-guard.middleware.js   # 中间件本体(magpie 加载的唯一文件)
 ├── package.json               # magpie.middleware 入口与示例选项
-├── cases.json                 # 42 个用例(三种引擎共用)
+├── cases.json                 # 49 个用例(三种引擎共用)
 ├── test.mjs                   # node/bun 测试器
 ├── verify/                    # Go + moejs 验证器与基准(CI 的 moejs 任务)
 ├── deploy/                    # docker-compose、注入脚本、远端安装器

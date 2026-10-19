@@ -77,6 +77,7 @@ export function onRequest(body, ctx) {
   if (!matchTargets(ctx && ctx.agent, built.agents)) return
   const c = pick(built, ctx && ctx.model)
   if (c === null) return
+  if (c.scope !== null && c.scope.length === 0) return // scope:[] — 完全放行
   const list = turnsArray(body, ctx && ctx.protocol)
   if (list === null) return
   const run = countTail(list, c, { walk: 0, chars: 0, max: c.maxChars, over: false }, ctx.protocol)
@@ -220,9 +221,9 @@ function oneCfg(o, base) {
   else if (o && o.mode === "reject") c.mode = "reject"
   else if (inh("mode") !== undefined) c.mode = inh("mode")
   else c.mode = "reject"
-  if (has("scope") && (o.scope === "tools" || o.scope === "full")) c.scope = o.scope
+  if (has("scope")) c.scope = normScope(o.scope)
   else if (inh("scope") !== undefined) c.scope = inh("scope")
-  else c.scope = "full"
+  else c.scope = null
   if (has("stopOnUser")) c.stopOnUser = o.stopOnUser === true
   else if (inh("stopOnUser") !== undefined) c.stopOnUser = inh("stopOnUser")
   else c.stopOnUser = false
@@ -471,23 +472,130 @@ function parseArgs(v) {
   try { return JSON.parse(v) } catch (e) { return v }
 }
 
-// hashReplyGroup hashes one logical reply. scope "full" (the default)
-// hashes the turns whole. scope "tools" hashes only the turns' tool calls
-// — name and arguments, volatile keys in the drop table still removed —
-// when the reply contains any, so narration reworded between rounds no
-// longer breaks the count; a reply with no tool call keeps its full
-// content, so two different text replies never compare equal.
-function hashReplyGroup(turns, c, st, protocol) {
-  let source = turns
-  if (c.scope === "tools") {
-    const calls = []
-    for (let i = 0; i < turns.length; i++) {
-      const cs = callsOf(turns[i], protocol)
-      if (cs !== null) {
-        for (let j = 0; j < cs.length; j++) calls.push(cs[j])
+// normScope normalizes one scope value: null means every part takes part
+// (the old "full"), "tools"/"text"/"thinking" mean that one part, and an
+// array is the set of parts to compare, in any order. An empty array is
+// meaningful — the rule never fires ("完全放行"). Unknown entries are
+// dropped; a non-empty array whose entries are all unknown falls back to
+// full, so a typo cannot silently switch the guard off.
+const SCOPE_PARTS = ["text", "thinking", "tools"]
+function normScope(v) {
+  if (Array.isArray(v)) {
+    const out = []
+    for (let i = 0; i < v.length; i++) {
+      if (SCOPE_PARTS.indexOf(v[i]) >= 0 && out.indexOf(v[i]) < 0) out.push(v[i])
+    }
+    if (v.length > 0 && out.length === 0) return null // 全是写错的条目:回退 full,不能因手误静默关掉保护
+    return out
+  }
+  if (v === "tools" || v === "text" || v === "thinking") return [v]
+  return null
+}
+
+// replyPartsOf splits one reply turn into its comparable parts: the
+// reply's text, its thinking, and its tool calls (callsOf's parsing, so
+// the drop table reaches inside arguments).
+function replyPartsOf(m, protocol) {
+  const out = { text: "", thinking: "", calls: [] }
+  if (!m || typeof m !== "object") return out
+  const addText = (s) => {
+    if (typeof s === "string" && s) out.text += (out.text ? "\u0000" : "") + s
+  }
+  const addThink = (s) => {
+    if (typeof s === "string" && s) out.thinking += (out.thinking ? "\u0000" : "") + s
+  }
+  if (protocol === "gemini") {
+    if (Array.isArray(m.parts)) {
+      for (let i = 0; i < m.parts.length; i++) {
+        const p = m.parts[i]
+        if (!p || typeof p !== "object") continue
+        if (p.functionCall) out.calls.push(p)
+        else if (p.thought === true) addThink(p.text)
+        else addText(p.text)
       }
     }
-    if (calls.length > 0) source = [calls]
+    return out
+  }
+  if (protocol === "responses") {
+    if (m.type === "reasoning") {
+      if (Array.isArray(m.summary)) {
+        for (let i = 0; i < m.summary.length; i++) {
+          const s = m.summary[i]
+          if (s && typeof s === "object" && s.type === "summary_text") addThink(s.text)
+        }
+      }
+      return out
+    }
+    if (m.type === "message" && Array.isArray(m.content)) {
+      for (let i = 0; i < m.content.length; i++) {
+        const p = m.content[i]
+        if (p && typeof p === "object" && (p.type === "output_text" || p.type === "text")) addText(p.text)
+      }
+      return out
+    }
+    const cs = callsOf(m, protocol)
+    if (cs !== null) out.calls = cs
+    return out
+  }
+  if (protocol === "chat") {
+    addText(m.content)
+    if (Array.isArray(m.content)) {
+      for (let i = 0; i < m.content.length; i++) {
+        const p = m.content[i]
+        if (p && typeof p === "object" && p.type === "text") addText(p.text)
+      }
+    }
+    addThink(m.reasoning_content)
+    const cs = callsOf(m, protocol)
+    if (cs !== null) out.calls = cs
+    return out
+  }
+  if (Array.isArray(m.content)) {
+    for (let i = 0; i < m.content.length; i++) {
+      const b = m.content[i]
+      if (!b || typeof b !== "object") continue
+      if (b.type === "text") addText(b.text)
+      else if (b.type === "thinking") addThink(b.thinking)
+      else if (b.type === "tool_use") out.calls.push(b)
+    }
+    return out
+  }
+  addText(m.content)
+  return out
+}
+
+// hashReplyGroup hashes one logical reply. scope null (the default) hashes
+// the turns whole. With a scope array, only the selected parts take part —
+// hashed in the fixed order text, thinking, tools, with the volatile-key
+// drop table still applied — so parts that reword between rounds no longer
+// break the count. When the reply contains none of the selected parts, the
+// whole turns are compared instead: two different replies never compare
+// equal because there was nothing selected to compare.
+function hashReplyGroup(turns, c, st, protocol) {
+  let source = turns
+  if (c.scope !== null) {
+    const parts = { text: "", thinking: "", calls: [] }
+    let hasText = false
+    let hasThink = false
+    let hasCalls = false
+    for (let i = 0; i < turns.length; i++) {
+      const p = replyPartsOf(turns[i], protocol)
+      if (p.text) {
+        parts.text += (hasText ? "\u0000" : "") + p.text
+        hasText = true
+      }
+      if (p.thinking) {
+        parts.thinking += (hasThink ? "\u0000" : "") + p.thinking
+        hasThink = true
+      }
+      for (let j = 0; j < p.calls.length; j++) parts.calls.push(p.calls[j])
+      if (p.calls.length > 0) hasCalls = true
+    }
+    const chosen = []
+    if (c.scope.indexOf("text") >= 0 && hasText) chosen.push({ text: parts.text })
+    if (c.scope.indexOf("thinking") >= 0 && hasThink) chosen.push({ thinking: parts.thinking })
+    if (c.scope.indexOf("tools") >= 0 && hasCalls) chosen.push({ calls: parts.calls })
+    if (chosen.length > 0) source = chosen
   }
   let out = null
   for (let i = 0; i < source.length; i++) {

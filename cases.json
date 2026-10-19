@@ -4944,5 +4944,723 @@
     "options": {
       "agents": []
     }
+  },
+  {
+    "name": "scope [text,tools]: thinking that rewords between rounds no longer breaks the count",
+    "request": {
+      "model": "GLM-5.3-Flash-EXL3",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fix"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "念头 0",
+              "signature": "sig-0"
+            },
+            {
+              "type": "text",
+              "text": "LOOP-CHECK"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_0",
+              "name": "bash",
+              "input": {
+                "command": "true"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_0",
+              "content": "ok"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "念头 1",
+              "signature": "sig-1"
+            },
+            {
+              "type": "text",
+              "text": "LOOP-CHECK"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_1",
+              "name": "bash",
+              "input": {
+                "command": "true"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_1",
+              "content": "ok"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "念头 2",
+              "signature": "sig-2"
+            },
+            {
+              "type": "text",
+              "text": "LOOP-CHECK"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_2",
+              "name": "bash",
+              "input": {
+                "command": "true"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_2",
+              "content": "ok"
+            }
+          ]
+        }
+      ]
+    },
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "fusionxparks/GLM-5.3-Flash-EXL3"
+    },
+    "options": {
+      "threshold": 3,
+      "scope": [
+        "text",
+        "tools"
+      ]
+    },
+    "reject": {
+      "status": 400,
+      "message": "3 times"
+    }
+  },
+  {
+    "name": "scope full (default): reworded thinking is part of the reply",
+    "request": {
+      "model": "GLM-5.3-Flash-EXL3",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fix"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "念头 0",
+              "signature": "sig-0"
+            },
+            {
+              "type": "text",
+              "text": "LOOP-CHECK"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_0",
+              "name": "bash",
+              "input": {
+                "command": "true"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_0",
+              "content": "ok"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "念头 1",
+              "signature": "sig-1"
+            },
+            {
+              "type": "text",
+              "text": "LOOP-CHECK"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_1",
+              "name": "bash",
+              "input": {
+                "command": "true"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_1",
+              "content": "ok"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "念头 2",
+              "signature": "sig-2"
+            },
+            {
+              "type": "text",
+              "text": "LOOP-CHECK"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_2",
+              "name": "bash",
+              "input": {
+                "command": "true"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_2",
+              "content": "ok"
+            }
+          ]
+        }
+      ]
+    },
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "fusionxparks/GLM-5.3-Flash-EXL3"
+    },
+    "options": {
+      "threshold": 3
+    }
+  },
+  {
+    "name": "scope [text]: varying tool arguments do not break a text loop",
+    "request": {
+      "model": "GLM-5.3-Flash-EXL3",
+      "messages": [
+        {
+          "role": "user",
+          "content": "go"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "LOOP-CHECK"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_0",
+              "name": "bash",
+              "input": {
+                "command": "true 0"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_0",
+              "content": "ok"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "LOOP-CHECK"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_1",
+              "name": "bash",
+              "input": {
+                "command": "true 1"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_1",
+              "content": "ok"
+            }
+          ]
+        }
+      ]
+    },
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "fusionxparks/GLM-5.3-Flash-EXL3"
+    },
+    "options": {
+      "threshold": 2,
+      "scope": [
+        "text"
+      ]
+    },
+    "reject": {
+      "status": 400,
+      "message": "2 times"
+    }
+  },
+  {
+    "name": "scope [] means the rule never fires",
+    "request": {
+      "model": "GLM-5.3-Flash-EXL3",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fix"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "LOOP"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_0",
+              "name": "bash",
+              "input": {
+                "command": "true"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_0",
+              "content": "ok"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "LOOP"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_1",
+              "name": "bash",
+              "input": {
+                "command": "true"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_1",
+              "content": "ok"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "LOOP"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_2",
+              "name": "bash",
+              "input": {
+                "command": "true"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_2",
+              "content": "ok"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "LOOP"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_3",
+              "name": "bash",
+              "input": {
+                "command": "true"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_3",
+              "content": "ok"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "LOOP"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_4",
+              "name": "bash",
+              "input": {
+                "command": "true"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_4",
+              "content": "ok"
+            }
+          ]
+        }
+      ]
+    },
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "fusionxparks/GLM-5.3-Flash-EXL3"
+    },
+    "options": {
+      "scope": []
+    }
+  },
+  {
+    "name": "scope with only unknown entries falls back to the full comparison",
+    "request": {
+      "model": "GLM-5.3-Flash-EXL3",
+      "messages": [
+        {
+          "role": "user",
+          "content": "fix"
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "LOOP"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_0",
+              "name": "bash",
+              "input": {
+                "command": "true"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_0",
+              "content": "ok"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "LOOP"
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_1",
+              "name": "bash",
+              "input": {
+                "command": "true"
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_1",
+              "content": "ok"
+            }
+          ]
+        }
+      ]
+    },
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "fusionxparks/GLM-5.3-Flash-EXL3"
+    },
+    "options": {
+      "threshold": 2,
+      "scope": [
+        "nonsense"
+      ]
+    },
+    "reject": {
+      "status": 400,
+      "message": "2 times"
+    }
+  },
+  {
+    "name": "scope [tools]: chat reasoning_content is excluded from the comparison",
+    "request": {
+      "model": "GLM-5.3-Flash-EXL3",
+      "messages": [
+        {
+          "role": "user",
+          "content": "go"
+        },
+        {
+          "role": "assistant",
+          "content": "LOOP-CHECK",
+          "reasoning_content": "想法 0",
+          "tool_calls": [
+            {
+              "id": "c0",
+              "type": "function",
+              "function": {
+                "name": "bash",
+                "arguments": "{\"command\": \"true\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "c0",
+          "content": "ok"
+        },
+        {
+          "role": "assistant",
+          "content": "LOOP-CHECK",
+          "reasoning_content": "想法 1",
+          "tool_calls": [
+            {
+              "id": "c1",
+              "type": "function",
+              "function": {
+                "name": "bash",
+                "arguments": "{\"command\": \"true\"}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "c1",
+          "content": "ok"
+        }
+      ]
+    },
+    "ctx": {
+      "protocol": "chat",
+      "model": "fusionxparks/GLM-5.3-Flash-EXL3"
+    },
+    "options": {
+      "threshold": 2,
+      "scope": [
+        "tools"
+      ]
+    },
+    "reject": {
+      "status": 400,
+      "message": "2 times"
+    }
+  },
+  {
+    "name": "scope [tools]: gemini thought parts are excluded from the comparison",
+    "request": {
+      "model": "gemini-2.5-pro",
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "text": "go"
+            }
+          ]
+        },
+        {
+          "role": "model",
+          "parts": [
+            {
+              "text": "想法 0",
+              "thought": true
+            },
+            {
+              "text": "LOOP-CHECK"
+            },
+            {
+              "functionCall": {
+                "id": "fc_0",
+                "name": "run_tests",
+                "args": {
+                  "all": true
+                }
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "parts": [
+            {
+              "functionResponse": {
+                "id": "fc_0",
+                "name": "run_tests",
+                "response": {
+                  "result": "ok"
+                }
+              }
+            }
+          ]
+        },
+        {
+          "role": "model",
+          "parts": [
+            {
+              "text": "想法 1",
+              "thought": true
+            },
+            {
+              "text": "LOOP-CHECK"
+            },
+            {
+              "functionCall": {
+                "id": "fc_1",
+                "name": "run_tests",
+                "args": {
+                  "all": true
+                }
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "parts": [
+            {
+              "functionResponse": {
+                "id": "fc_1",
+                "name": "run_tests",
+                "response": {
+                  "result": "ok"
+                }
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "ctx": {
+      "protocol": "gemini",
+      "model": "fusionxparks/GLM-5.3-Flash-EXL3"
+    },
+    "options": {
+      "threshold": 2,
+      "scope": [
+        "tools"
+      ]
+    },
+    "reject": {
+      "status": 400,
+      "message": "2 times"
+    }
   }
 ]
