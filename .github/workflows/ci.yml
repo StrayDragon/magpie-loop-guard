@@ -58,7 +58,8 @@ jobs:
           out=$(go run . -file ../loop-guard.middleware.js -bench)
           echo "$out"
           ms=$(echo "$out" | sed -n 's/.*: \([0-9.]*\)ms per call.*/\1/p')
-          awk -v ms="$ms" 'BEGIN { if (ms+0 <= 0 || ms+0 > 25) exit 1 }'
+          us=$(echo "$out" | sed -n 's/.*: \([0-9.]*\)[µu]s per call.*/\1/p')
+          awk -v ms="$ms" -v us="$us" 'BEGIN { v = (us != "" ? us / 1000 : ms + 0); if (v <= 0 || v > 25) exit 1 }'
 
   deploy-lint:
     # the compose file and the injection script ship to users' NAS boxes;

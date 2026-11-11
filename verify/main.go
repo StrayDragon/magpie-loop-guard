@@ -22,7 +22,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/Calcium-Ion/moejs"
+	"github.com/MoeForge/moejs"
 )
 
 func main() {
@@ -100,8 +100,11 @@ func requestCtx(rt *moejs.Runtime, realm *moejs.Realm, info map[string]any, capt
 				captured.status = int(a.AsNumber())
 			}
 			if a := moejs.Arg(args, 1); a.IsString() {
-				if s, err := realm.ToString(a); err == nil {
-					captured.message = s.GoString()
+				if b, err := rt.AppendJSON(nil, a); err == nil {
+					var s string
+					if json.Unmarshal(b, &s) == nil {
+						captured.message = s
+					}
 				}
 			}
 		}
@@ -132,6 +135,9 @@ func runCases(file, casesPath string) (code int) {
 			Status  int    `json:"status"`
 			Message string `json:"message"`
 		} `json:"reject"`
+		Inject *struct {
+			Prompt string `json:"prompt"`
+		} `json:"inject"`
 		ExpectLog bool `json:"expect_log"`
 	}
 	if err := json.Unmarshal(b, &cases); err != nil {
@@ -151,6 +157,10 @@ func runCases(file, casesPath string) (code int) {
 				t.fatalf("%s: ctx.%s: %v", c.Name, k, err)
 			}
 		}
+		protocol := "anthropic"
+		if p, ok := c.Ctx["protocol"].(string); ok && p != "" {
+			protocol = p
+		}
 		bodyb, _ := json.Marshal(c.Request)
 		body, err := rt.ParseJSON(bodyb)
 		if err != nil {
@@ -162,12 +172,18 @@ func runCases(file, casesPath string) (code int) {
 			failed++
 			continue
 		}
-		if !res.IsUndefined() {
-			fmt.Printf("✗ %s\n    onRequest returned a value, want undefined\n", c.Name)
-			failed++
-			continue
-		}
 		var bad []string
+		if c.Inject != nil {
+			if res.IsUndefined() {
+				bad = append(bad, "expected an injected body, onRequest returned nothing")
+			} else if text, ok := injectedText(rt, res, protocol); !ok {
+				bad = append(bad, "the injected body carries no trailing user text")
+			} else if !strings.Contains(text, c.Inject.Prompt) {
+				bad = append(bad, fmt.Sprintf("injected message %q lacks %q", text, c.Inject.Prompt))
+			}
+		} else if !res.IsUndefined() {
+			bad = append(bad, "onRequest returned a value, want undefined")
+		}
 		if c.Reject != nil {
 			if captured.status == 0 {
 				bad = append(bad, "expected a reject, got none")
@@ -274,4 +290,65 @@ func itoa(n int) string {
 		n /= 10
 	}
 	return string(d)
+}
+
+// injectedText flattens the trailing user turn of an injected body: the
+// turns array is picked the way the middleware's turnsOf picks it, and
+// the text is read in that protocol's user-message shape.
+func injectedText(rt *moejs.Runtime, res moejs.Value, protocol string) (string, bool) {
+	b, err := rt.AppendJSON(nil, res)
+	if err != nil {
+		return "", false
+	}
+	var m map[string]any
+	if json.Unmarshal(b, &m) != nil {
+		return "", false
+	}
+	key := "messages"
+	if protocol == "gemini" {
+		key = "contents"
+	} else if protocol == "responses" {
+		key = "input"
+	}
+	arr, _ := m[key].([]any)
+	if len(arr) == 0 && protocol == "responses" {
+		arr, _ = m["messages"].([]any)
+	}
+	if len(arr) == 0 {
+		return "", false
+	}
+	last, _ := arr[len(arr)-1].(map[string]any)
+	if last == nil {
+		return "", false
+	}
+	return userText(last, protocol)
+}
+
+// userText flattens one user turn's text in the protocol's shape.
+func userText(turn map[string]any, protocol string) (string, bool) {
+	var out string
+	if protocol == "gemini" {
+		parts, _ := turn["parts"].([]any)
+		for _, p := range parts {
+			if pm, ok := p.(map[string]any); ok {
+				if s, ok := pm["text"].(string); ok {
+					out += s
+				}
+			}
+		}
+		return out, out != ""
+	}
+	switch content := turn["content"].(type) {
+	case string:
+		out = content
+	case []any:
+		for _, c := range content {
+			if cm, ok := c.(map[string]any); ok {
+				if s, ok := cm["text"].(string); ok {
+					out += s
+				}
+			}
+		}
+	}
+	return out, out != ""
 }

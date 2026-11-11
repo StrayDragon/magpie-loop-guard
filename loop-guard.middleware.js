@@ -10,6 +10,9 @@
 //     不需要共享表、锁和淘汰策略;子代理、多会话互不干扰。
 //   - 只挂 onRequest,不挂 onEvent/onResponse,回复(流式)路径
 //     完全不加包装,零开销。
+//   - 唯一会动请求体的路径是 mode:"inject":它返回请求体的浅拷贝,在
+//     轮次数组末尾追加一条纠正用的 user 消息,让模型自己把循环纠正过来;
+//     其余模式从不改写请求体,唯一动作是 ctx.reject。
 //   - 每个请求只做:模型名匹配(常数)+ 至多 scan 条消息的角色判断
 //     + 至多 threshold 条回复的哈希(凑满阈值或遇到第一个不同就停)。
 //   - 比较前去掉 id、signature、usage 等每次必变的字段,只比内容;
@@ -40,12 +43,34 @@
 //     "status": 400,         // 拒绝时的 HTTP 状态码。特意不用 429:多数 agent
 //                            // 会对 429 自动退避重试,那与打断循环的目的相反
 //     "message": "",         // 自定义拒绝消息;默认说明次数与处理办法
-//     "mode": "reject",      // "log":只记录不拒绝,先试运行观察会不会误伤
+//     "mode": "reject",      // "log":只记录不拒绝,先试运行观察会不会误伤;
+//                            // "inject":不拒绝,往轮次末尾追加一条纠正用的
+//                            // user 消息后放行,让模型自己把循环纠正过来
+//     "prompt": "",          // inject 模式追加的纠正文本;未写用内置默认文案
+//     "fragment": false,     // 单条回复内部的碎片复读检测:true = 内置参数
+//                            // (窗口 64 句、去重上限 8);或写一个数字当窗口;
+//                            // 或 {"window":64,"distinct":8} 精确配置
+//     "name": "",            // 规则名,只用于日志与消息里辨认这条预设
 //     "stopOnUser": false,   // true:回看遇到真实用户发言就停止计数(更保守)
 //     "ignore": [],          // 在默认表之外,比较时额外忽略的字段名(顶层与
 //                            // 规则的并集)
 //     "agents": []           // 收窄名单:未写/null/""/[] = 所有 agent
 //                            // 都在范围内,[模式] = 仅这些 agent(如 ["claude-code"])
+//   }
+//
+// 一条带 name 的 inject 规则就是一个预设(preset):名字只给人看,行为全由
+// 字段决定。例如给 deepseek-v4.1-flash 挂上"碎片复读就塞纠正语":
+//
+//   {
+//     "targets": [],
+//     "models": [
+//       {
+//         "name": "dsv41flash-let-me-loop",
+//         "targets": ["*/deepseek-v4.1-flash*"],
+//         "fragment": true,
+//         "mode": "inject"
+//       }
+//     ]
 //   }
 
 // DEFAULT_IGNORE 是比较回复时忽略的易变字段:同一次死循环里,这些字段
@@ -59,6 +84,21 @@ const DEFAULT_IGNORE = [
   "first_token_at", "session", "trace_id", "span_id",
   "system_fingerprint", "service_tier", "fingerprint",
 ]
+
+// DEFAULT_PROMPT 是 mode:"inject" 在规则没写 prompt 时追加的纠正文案。
+const DEFAULT_PROMPT =
+  "[复读拦截] 你似乎有段思考退化成了碎片复读, 下次遇到请直接继续执行下一步，" +
+  "不要再输出任何确认语、寒暄或空话, 直接给出具体的下一步操作，" +
+  "不要再重复'Let me...'或'好/做'之类的空话。"
+
+// fragment 检测的内置参数:最新一条回复的最后 64 个"行/句"单位全部落在
+// 8 个以内的不同文本里才算碎片循环(与 magpie 内置回复守卫同思路,窗口
+// 小得多——这里比较的是已经落进历史的完整回复)。
+const FRAG_WINDOW = 64
+const FRAG_DISTINCT = 8
+
+// 一个比较单位的长度上限:去重只关心两个单位读起来是否一样,超长截断。
+const UNIT_CAP = 120
 
 // imul is 32-bit integer multiply. Math.imul (ES6) is used when present;
 // the 16-bit split below is the standard fallback, so the hash works on
@@ -80,19 +120,39 @@ export function onRequest(body, ctx) {
   const c = pick(built, ctx && ctx.model)
   if (c === null) return
   if (c.scope !== null && c.scope.length === 0) return // scope:[] — 完全放行
-  const list = turnsArray(body, ctx && ctx.protocol)
-  if (list === null) return
-  const run = countTail(list, c, { walk: 0, chars: 0, max: c.maxChars, over: false }, ctx.protocol)
-  if (run < c.threshold) return
+  const turns = turnsOf(body, ctx && ctx.protocol)
+  if (turns === null) return
+  const list = turns.list
+  const st = { walk: 0, chars: 0, max: c.maxChars, over: false }
+  const frag = fragmentTail(list, c, st, ctx && ctx.protocol)
+  const run = countTail(list, c, st, ctx && ctx.protocol)
+  if (frag === 0 && run < c.threshold) return
+  const why = frag > 0
+    ? "its newest reply degraded into a fragment loop"
+    : "it has repeated the same reply " + run + " times in a row"
   if (c.mode === "log") {
-    console.log("loop-guard: " + String(ctx.model || "?") + " has repeated the same reply " + run +
-      " times in a row (threshold " + c.threshold + "); mode=log, not blocking")
+    console.log("loop-guard: " + String(ctx.model || "?") + " " + why +
+      " (preset " + (c.name || "default") + "); mode=log, not blocking")
     return
   }
+  if (c.mode === "inject") {
+    const next = injectTurn(body, turns, c, ctx && ctx.protocol)
+    if (next !== null) {
+      console.log("loop-guard: " + String(ctx.model || "?") + " " + why +
+        " (preset " + (c.name || "default") + "); appended a corrective user message and let the request continue")
+      return next
+    }
+    // 没有可追加的轮次数组(注入不进去):退回拒绝,别让已确认的循环继续花钱。
+  }
   const msg = c.message ||
-    ("loop-guard: the model has returned the same reply " + run + " times in a row in this session," +
-      " so this request was stopped to break the loop. Start a new session or change the prompt," +
-      " or raise \"threshold\" in this middleware's options.")
+    (c.name ? c.name + ": " : "") +
+    (frag > 0 && run < c.threshold
+      ? "loop-guard: the model's newest reply degraded into a fragment loop (its last lines and sentences" +
+        " keep repeating among a few distinct texts), so this request was stopped to break the loop." +
+        " Start a new session or change the prompt, or adjust \"fragment\" in this middleware's options."
+      : "loop-guard: the model has returned the same reply " + run + " times in a row in this session," +
+        " so this request was stopped to break the loop. Start a new session or change the prompt," +
+        " or raise \"threshold\" in this middleware's options.")
   ctx.reject(c.status, msg)
 }
 
@@ -235,8 +295,18 @@ function oneCfg(o, base) {
   if (has("message") && typeof o.message === "string") c.message = o.message
   else if (inh("message") !== undefined) c.message = inh("message")
   else c.message = ""
+  if (has("prompt") && typeof o.prompt === "string") c.prompt = o.prompt
+  else if (inh("prompt") !== undefined) c.prompt = inh("prompt")
+  else c.prompt = ""
+  if (has("name") && typeof o.name === "string" && o.name) c.name = o.name
+  else if (inh("name") !== undefined) c.name = inh("name")
+  else c.name = ""
+  if (has("fragment")) c.fragment = normFragment(o.fragment)
+  else if (inh("fragment") !== undefined) c.fragment = inh("fragment")
+  else c.fragment = null
   if (o && o.mode === "log") c.mode = "log"
   else if (o && o.mode === "reject") c.mode = "reject"
+  else if (o && o.mode === "inject") c.mode = "inject"
   else if (inh("mode") !== undefined) c.mode = inh("mode")
   else c.mode = "reject"
   if (has("scope")) c.scope = normScope(o.scope)
@@ -304,20 +374,167 @@ function globOK(name, pats) {
   return false
 }
 
-// turnsArray is the request's list of turns, in its API's shape; null when
-// there is no history to compare (a Responses request whose input is only
-// the new text, or a body without messages at all).
-function turnsArray(body, protocol) {
+// turnsOf is the request's list of turns, in its API's shape, together
+// with the body key the array lives under (so an injection can append to
+// the same array on a copied body); null when there is no history to
+// compare (a Responses request whose input is only the new text, or a
+// body without messages at all).
+function turnsOf(body, protocol) {
   if (protocol === "gemini") {
-    if (Array.isArray(body.contents)) return body.contents
-    return Array.isArray(body.messages) ? body.messages : null
+    if (Array.isArray(body.contents)) return { list: body.contents, key: "contents" }
+    if (Array.isArray(body.messages)) return { list: body.messages, key: "messages" }
+    return null
   }
   if (protocol === "responses") {
-    if (typeof body.input === "string") return null
-    if (Array.isArray(body.input)) return body.input
-    return Array.isArray(body.messages) ? body.messages : null
+    if (Array.isArray(body.input)) return { list: body.input, key: "input" }
+    if (Array.isArray(body.messages)) return { list: body.messages, key: "messages" }
+    return null
   }
-  return Array.isArray(body.messages) ? body.messages : null
+  if (Array.isArray(body.messages)) return { list: body.messages, key: "messages" }
+  return null
+}
+
+// fragmentTail checks the newest logical reply for the in-reply loop that
+// magpie's own reply guard ends with a 502: one streamed reply whose last
+// lines and sentences all repeat among a few distinct short texts (the
+// "Let me write. / Let me do it. / ..." degradation). The walk passes
+// trailing tool results and (unless stopOnUser) user turns, takes the
+// next contiguous run of reply turns as one reply, and compares its text
+// and thinking only — the loop it looks for lives in the words, so scope
+// does not apply. It returns the units seen, 0 when this is not a
+// fragment loop — also when the walk or the budget ran out: unknown is
+// never a loop.
+function fragmentTail(list, c, st, protocol) {
+  if (c.fragment === null) return 0
+  const f = c.fragment
+  const n = list.length
+  let i = n - 1
+  while (i >= 0 && st.walk < c.scan) {
+    st.walk++
+    const k = kindOf(list[i], protocol)
+    if (k === "r") break
+    if (k === "u" && c.stopOnUser) return 0
+    i--
+  }
+  const group = []
+  while (i >= 0 && st.walk < c.scan) {
+    st.walk++
+    if (kindOf(list[i], protocol) !== "r") break
+    group.push(list[i])
+    i--
+  }
+  if (group.length === 0) return 0
+  const ring = []
+  const counts = Object.create(null)
+  let total = 0
+  const push = (u) => {
+    total++
+    ring.push(u)
+    counts[u] = (counts[u] || 0) + 1
+    if (ring.length > f.window) {
+      const out = ring.shift()
+      counts[out]--
+      if (counts[out] === 0) delete counts[out]
+    }
+  }
+  for (let g = 0; g < group.length && !st.over; g++) {
+    const p = replyPartsOf(group[g], protocol)
+    feedUnits(p.text, st, push)
+    if (!st.over) feedUnits(p.thinking, st, push)
+  }
+  if (st.over) return 0
+  let distinct = 0
+  for (const k in counts) distinct++
+  if (total < f.window || distinct > f.distinct) return 0
+  return total
+}
+
+// feedUnits cuts one text into line units and hands each line to lineUnit.
+function feedUnits(s, st, push) {
+  if (typeof s !== "string" || !s) return
+  const n = s.length
+  let start = 0
+  for (let i = 0; i <= n && !st.over; i++) {
+    if (i === n || s.charCodeAt(i) === 10) {
+      lineUnit(s, start, i, st, push)
+      start = i + 1
+    }
+  }
+}
+
+// lineUnit cuts one line into sentence units: a unit ends after terminal
+// punctuation, or at the line's end. That makes both "one phrase per
+// line" and "one line full of the same sentence" read as many units.
+function lineUnit(s, from, to, st, push) {
+  let start = from
+  for (let i = from; i < to; i++) {
+    if (isSentenceEnd(s.charCodeAt(i))) {
+      emitUnit(s, start, i + 1, st, push)
+      if (st.over) return
+      start = i + 1
+    }
+  }
+  if (start < to) emitUnit(s, start, to, st, push)
+}
+
+function isSentenceEnd(code) {
+  return code === 46 || code === 33 || code === 63 || code === 59 || code === 58 ||
+    code === 0x3002 || code === 0xff01 || code === 0xff1f || code === 0xff1b ||
+    code === 0xff1a || code === 0xff0c || code === 0x2026
+}
+
+// emitUnit normalizes one unit — trimmed, lowercased, truncated at
+// UNIT_CAP chars — and pushes it; empty units are skipped. The budget
+// counts every character a unit keeps; an exhausted budget marks the
+// scan unknown, and unknown is never a loop.
+function emitUnit(s, from, to, st, push) {
+  let a = from
+  let b = to
+  while (a < b && isSpace(s.charCodeAt(a))) a++
+  while (b > a && isSpace(s.charCodeAt(b - 1))) b--
+  if (b <= a) return
+  if (b - a > UNIT_CAP) b = a + UNIT_CAP
+  st.chars += b - a
+  if (st.chars > st.max) {
+    st.over = true
+    return
+  }
+  let u = ""
+  for (let i = a; i < b; i++) {
+    let code = s.charCodeAt(i)
+    if (code >= 65 && code <= 90) code += 32
+    u += String.fromCharCode(code)
+  }
+  push(u)
+}
+
+function isSpace(code) {
+  return code === 32 || code === 9 || code === 13 || code === 11 || code === 12 || code === 0x3000
+}
+
+// injectMsg builds one corrective user turn in the request's protocol
+// shape; chat's shape doubles for any protocol turnsOf fell back to.
+function injectMsg(text, protocol) {
+  if (protocol === "gemini") return { role: "user", parts: [{ text: text }] }
+  if (protocol === "responses") return { role: "user", content: [{ type: "input_text", text: text }] }
+  if (protocol === "anthropic") return { role: "user", content: [{ type: "text", text: text }] }
+  return { role: "user", content: text }
+}
+
+// injectTurn copies the body shallowly, appends one corrective user turn
+// to the same turns array the scan read, and returns the copy for the
+// gateway to send upstream; the request as it arrived is never touched.
+// null means there was nothing to append to.
+function injectTurn(body, turns, c, protocol) {
+  const text = c.prompt || DEFAULT_PROMPT
+  const list = turns.list
+  if (list.length === 0) return null
+  const next = {}
+  for (const k in body) next[k] = body[k]
+  const arr = list.slice()
+  arr.push(injectMsg(text, protocol))
+  next[turns.key] = arr
+  return next
 }
 
 // kindOf classes one turn: "r" a reply (assistant message, or one piece of
@@ -508,6 +725,26 @@ function normScope(v) {
   }
   if (v === "tools" || v === "text" || v === "thinking") return [v]
   return null
+}
+
+// normFragment compiles one fragment option. true means the built-in
+// window and distinct; a bare number means that window with the built-in
+// distinct; an object may set both, and bad numbers fall back to the
+// built-ins instead of silently switching the check off. Everything else
+// — false, null, unknown shapes — means off: 配置则生效。
+function normFragment(v) {
+  if (v === true) return { window: FRAG_WINDOW, distinct: FRAG_DISTINCT }
+  if (typeof v === "number") {
+    const w = Math.floor(v)
+    return { window: w >= 8 && w <= 4096 ? w : FRAG_WINDOW, distinct: FRAG_DISTINCT }
+  }
+  if (!v || typeof v !== "object" || Array.isArray(v)) return null
+  const w = Math.floor(Number(v.window))
+  const d = Math.floor(Number(v.distinct))
+  return {
+    window: w >= 8 && w <= 4096 ? w : FRAG_WINDOW,
+    distinct: d >= 1 && d <= 256 ? d : FRAG_DISTINCT,
+  }
 }
 
 // replyPartsOf splits one reply turn into its comparable parts: the

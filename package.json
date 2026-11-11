@@ -1,7 +1,7 @@
 {
   "name": "magpie-loop-guard",
-  "version": "1.0.0",
-  "description": "Break LLM loops as magpie gateway middleware: when a model has returned the same reply N times in a row in one session, refuse the next request (LLM 死循环保护)",
+  "version": "1.1.0",
+  "description": "Break LLM loops as magpie gateway middleware: after N identical replies in a session, refuse the next request, or inject a preset corrective prompt so the model self-corrects (LLM 死循环保护)",
   "type": "module",
   "files": [
     "loop-guard.middleware.js",
@@ -15,6 +15,7 @@
     "loop-guard",
     "repeat",
     "guard",
+    "preset",
     "llm-gateway"
   ],
   "license": "MIT",
@@ -35,7 +36,17 @@
         "*"
       ],
       "threshold": 5,
-      "mode": "reject"
+      "mode": "reject",
+      "models": [
+        {
+          "name": "dsv41flash-let-me-loop",
+          "targets": [
+            "*/deepseek-v4.1-flash*"
+          ],
+          "fragment": true,
+          "mode": "inject"
+        }
+      ]
     }
   }
 }

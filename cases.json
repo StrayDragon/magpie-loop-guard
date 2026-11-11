@@ -6747,5 +6747,1087 @@
     "options": {
       "agents": []
     }
+  },
+  {
+    "name": "inject preset: a cross-turn loop gets a corrective user message appended",
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "fusionxparks/gpt-x"
+    },
+    "options": {
+      "targets": [
+        "*"
+      ],
+      "threshold": 2,
+      "mode": "inject",
+      "prompt": "[复读拦截] 请直接继续下一步操作"
+    },
+    "request": {
+      "model": "gpt-x",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "fix the bug"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "same thought",
+              "signature": "sig-0"
+            },
+            {
+              "type": "text",
+              "text": "I will read the file again."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_0",
+              "name": "read_file",
+              "input": {
+                "path": "a.py"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 100,
+            "output_tokens": 50
+          }
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_0",
+              "content": "same file body"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "same thought",
+              "signature": "sig-1"
+            },
+            {
+              "type": "text",
+              "text": "I will read the file again."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_1",
+              "name": "read_file",
+              "input": {
+                "path": "a.py"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 100,
+            "output_tokens": 50
+          }
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_1",
+              "content": "same file body"
+            }
+          ]
+        }
+      ]
+    },
+    "inject": {
+      "prompt": "[复读拦截] 请直接继续下一步操作"
+    }
+  },
+  {
+    "name": "inject without a prompt appends the built-in corrective message",
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "fusionxparks/gpt-x"
+    },
+    "options": {
+      "targets": [
+        "*"
+      ],
+      "threshold": 2,
+      "mode": "inject"
+    },
+    "request": {
+      "model": "gpt-x",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "fix the bug"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "same thought",
+              "signature": "sig-0"
+            },
+            {
+              "type": "text",
+              "text": "I will read the file again."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_0",
+              "name": "read_file",
+              "input": {
+                "path": "a.py"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 100,
+            "output_tokens": 50
+          }
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_0",
+              "content": "same file body"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "same thought",
+              "signature": "sig-1"
+            },
+            {
+              "type": "text",
+              "text": "I will read the file again."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_1",
+              "name": "read_file",
+              "input": {
+                "path": "a.py"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 100,
+            "output_tokens": 50
+          }
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_1",
+              "content": "same file body"
+            }
+          ]
+        }
+      ]
+    },
+    "inject": {
+      "prompt": "复读拦截"
+    }
+  },
+  {
+    "name": "inject appends a plain user message on chat",
+    "ctx": {
+      "protocol": "chat",
+      "model": "openai/gpt"
+    },
+    "options": {
+      "targets": [
+        "*"
+      ],
+      "threshold": 2,
+      "mode": "inject",
+      "prompt": "continue, do not repeat"
+    },
+    "request": {
+      "model": "gpt",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": "go"
+        },
+        {
+          "role": "assistant",
+          "content": "stuck.",
+          "tool_calls": [
+            {
+              "id": "c0",
+              "type": "function",
+              "function": {
+                "name": "run_tests",
+                "arguments": "{}"
+              }
+            }
+          ]
+        },
+        {
+          "role": "tool",
+          "tool_call_id": "c0",
+          "content": "ok"
+        },
+        {
+          "role": "assistant",
+          "content": "stuck.",
+          "tool_calls": [
+            {
+              "id": "c1",
+              "type": "function",
+              "function": {
+                "name": "run_tests",
+                "arguments": "{}"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "inject": {
+      "prompt": "continue, do not repeat"
+    }
+  },
+  {
+    "name": "inject appends to the responses input array",
+    "ctx": {
+      "protocol": "responses",
+      "model": "openai/gpt"
+    },
+    "options": {
+      "targets": [
+        "*"
+      ],
+      "threshold": 2,
+      "mode": "inject",
+      "prompt": "step aside and continue"
+    },
+    "request": {
+      "model": "gpt",
+      "stream": true,
+      "input": [
+        {
+          "type": "message",
+          "role": "user",
+          "content": [
+            {
+              "type": "input_text",
+              "text": "go"
+            }
+          ]
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "stuck"
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "name": "run_tests",
+          "arguments": "{}"
+        },
+        {
+          "type": "function_call_output",
+          "call_id": "c1",
+          "output": "ok"
+        },
+        {
+          "type": "message",
+          "role": "assistant",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "stuck"
+            }
+          ]
+        },
+        {
+          "type": "function_call",
+          "name": "run_tests",
+          "arguments": "{}"
+        }
+      ]
+    },
+    "inject": {
+      "prompt": "step aside and continue"
+    }
+  },
+  {
+    "name": "inject appends to gemini contents",
+    "ctx": {
+      "protocol": "gemini",
+      "model": "google/gemini"
+    },
+    "options": {
+      "targets": [
+        "*"
+      ],
+      "threshold": 2,
+      "mode": "inject",
+      "prompt": "continue with the next step"
+    },
+    "request": {
+      "model": "gemini",
+      "stream": true,
+      "contents": [
+        {
+          "role": "user",
+          "parts": [
+            {
+              "text": "go"
+            }
+          ]
+        },
+        {
+          "role": "model",
+          "parts": [
+            {
+              "text": "stuck"
+            },
+            {
+              "functionCall": {
+                "name": "run_tests",
+                "args": {}
+              }
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "parts": [
+            {
+              "functionResponse": {
+                "name": "run_tests",
+                "response": {
+                  "ok": true
+                }
+              }
+            }
+          ]
+        },
+        {
+          "role": "model",
+          "parts": [
+            {
+              "text": "stuck"
+            },
+            {
+              "functionCall": {
+                "name": "run_tests",
+                "args": {}
+              }
+            }
+          ]
+        }
+      ]
+    },
+    "inject": {
+      "prompt": "continue with the next step"
+    }
+  },
+  {
+    "name": "inject leaves the rest of the body untouched",
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "fusionxparks/gpt-x"
+    },
+    "options": {
+      "targets": [
+        "*"
+      ],
+      "threshold": 2,
+      "mode": "inject",
+      "prompt": "carry on"
+    },
+    "request": {
+      "model": "gpt-x",
+      "stream": true,
+      "temperature": 0.2,
+      "max_tokens": 1024,
+      "system": "be brief",
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "fix the bug"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "same thought",
+              "signature": "sig-0"
+            },
+            {
+              "type": "text",
+              "text": "I will read the file again."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_0",
+              "name": "read_file",
+              "input": {
+                "path": "a.py"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 100,
+            "output_tokens": 50
+          }
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_0",
+              "content": "same file body"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "same thought",
+              "signature": "sig-1"
+            },
+            {
+              "type": "text",
+              "text": "I will read the file again."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_1",
+              "name": "read_file",
+              "input": {
+                "path": "a.py"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 100,
+            "output_tokens": 50
+          }
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_1",
+              "content": "same file body"
+            }
+          ]
+        }
+      ]
+    },
+    "inject": {
+      "prompt": "carry on"
+    }
+  },
+  {
+    "name": "inject preset dsv41flash-let-me-loop: a Let-me fragment loop gets the corrective message",
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "opencode-zen/deepseek-v4.1-flash-free"
+    },
+    "options": {
+      "targets": [],
+      "models": [
+        {
+          "name": "dsv41flash-let-me-loop",
+          "targets": [
+            "*/deepseek-v4.1-flash*"
+          ],
+          "fragment": true,
+          "mode": "inject"
+        }
+      ]
+    },
+    "request": {
+      "model": "deepseek-v4.1-flash-free",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "continue the migration"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Let me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "again"
+            }
+          ]
+        }
+      ]
+    },
+    "inject": {
+      "prompt": "复读拦截"
+    }
+  },
+  {
+    "name": "fragment off by default: the same fragmented reply passes",
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "opencode-zen/deepseek-v4.1-flash-free"
+    },
+    "options": {
+      "targets": [
+        "*"
+      ]
+    },
+    "request": {
+      "model": "deepseek-v4.1-flash-free",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "continue the migration"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Let me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "again"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "fragment below the window passes",
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "opencode-zen/deepseek-v4.1-flash-free"
+    },
+    "options": {
+      "targets": [
+        "*"
+      ],
+      "fragment": true,
+      "mode": "inject"
+    },
+    "request": {
+      "model": "deepseek-v4.1-flash-free",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "continue the migration"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Let me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "again"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "fragment above the distinct limit passes",
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "x/y"
+    },
+    "options": {
+      "targets": [
+        "*"
+      ],
+      "fragment": true,
+      "mode": "inject"
+    },
+    "request": {
+      "model": "y",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "go"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Option 0 stands.\nOption 1 stands.\nOption 2 stands.\nOption 3 stands.\nOption 4 stands.\nOption 5 stands.\nOption 6 stands.\nOption 7 stands.\nOption 8 stands.\nOption 9 stands.\nOption 10 stands.\nOption 11 stands.\nOption 0 stands.\nOption 1 stands.\nOption 2 stands.\nOption 3 stands.\nOption 4 stands.\nOption 5 stands.\nOption 6 stands.\nOption 7 stands.\nOption 8 stands.\nOption 9 stands.\nOption 10 stands.\nOption 11 stands.\nOption 0 stands.\nOption 1 stands.\nOption 2 stands.\nOption 3 stands.\nOption 4 stands.\nOption 5 stands.\nOption 6 stands.\nOption 7 stands.\nOption 8 stands.\nOption 9 stands.\nOption 10 stands.\nOption 11 stands.\nOption 0 stands.\nOption 1 stands.\nOption 2 stands.\nOption 3 stands.\nOption 4 stands.\nOption 5 stands.\nOption 6 stands.\nOption 7 stands.\nOption 8 stands.\nOption 9 stands.\nOption 10 stands.\nOption 11 stands.\nOption 0 stands.\nOption 1 stands.\nOption 2 stands.\nOption 3 stands.\nOption 4 stands.\nOption 5 stands.\nOption 6 stands.\nOption 7 stands.\nOption 8 stands.\nOption 9 stands.\nOption 10 stands.\nOption 11 stands.\nOption 0 stands.\nOption 1 stands.\nOption 2 stands.\nOption 3 stands.\nOption 4 stands.\nOption 5 stands.\nOption 6 stands.\nOption 7 stands.\nOption 8 stands.\nOption 9 stands.\nOption 10 stands.\nOption 11 stands."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "again"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "fragment with mode reject refuses with the fragment message",
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "x/y"
+    },
+    "options": {
+      "targets": [
+        "*"
+      ],
+      "fragment": true
+    },
+    "request": {
+      "model": "y",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "continue the migration"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Let me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "again"
+            }
+          ]
+        }
+      ]
+    },
+    "reject": {
+      "status": 400,
+      "message": "fragment loop"
+    }
+  },
+  {
+    "name": "fragment reads thinking too",
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "x/y"
+    },
+    "options": {
+      "targets": [
+        "*"
+      ],
+      "fragment": true,
+      "mode": "inject"
+    },
+    "request": {
+      "model": "y",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "go"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。\n让我想想。",
+              "signature": "sig-0"
+            },
+            {
+              "type": "text",
+              "text": "done."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "again"
+            }
+          ]
+        }
+      ]
+    },
+    "inject": {
+      "prompt": "复读拦截"
+    }
+  },
+  {
+    "name": "fragment window and distinct are configurable",
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "x/y"
+    },
+    "options": {
+      "targets": [
+        "*"
+      ],
+      "fragment": {
+        "window": 12,
+        "distinct": 1
+      },
+      "mode": "inject"
+    },
+    "request": {
+      "model": "y",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "go"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "still on it.\nstill on it.\nstill on it.\nstill on it.\nstill on it.\nstill on it.\nstill on it.\nstill on it.\nstill on it.\nstill on it.\nstill on it.\nstill on it."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "again"
+            }
+          ]
+        }
+      ]
+    },
+    "inject": {
+      "prompt": "复读拦截"
+    }
+  },
+  {
+    "name": "a models rule inherits the top level's fragment",
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "x/y"
+    },
+    "options": {
+      "targets": [],
+      "fragment": true,
+      "models": [
+        {
+          "name": "only-x",
+          "targets": [
+            "x/*"
+          ],
+          "mode": "inject"
+        }
+      ]
+    },
+    "request": {
+      "model": "y",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "continue the migration"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Let me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "again"
+            }
+          ]
+        }
+      ]
+    },
+    "inject": {
+      "prompt": "复读拦截"
+    }
+  },
+  {
+    "name": "a fragment scan that exhausts maxChars passes",
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "x/y"
+    },
+    "options": {
+      "targets": [
+        "*"
+      ],
+      "fragment": true,
+      "mode": "inject",
+      "maxChars": 100
+    },
+    "request": {
+      "model": "y",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "continue the migration"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "text",
+              "text": "Let me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize.\nLet me write.\nLet me do it.\nLet me produce.\nLet me go.\nLet me emit.\nLet me finalize."
+            }
+          ]
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "again"
+            }
+          ]
+        }
+      ]
+    }
+  },
+  {
+    "name": "a named preset prefixes the default reject message",
+    "ctx": {
+      "protocol": "anthropic",
+      "model": "fusionxparks/gpt-x"
+    },
+    "options": {
+      "targets": [
+        "*"
+      ],
+      "threshold": 2,
+      "name": "dsv41flash-let-me-loop"
+    },
+    "request": {
+      "model": "gpt-x",
+      "stream": true,
+      "messages": [
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "text",
+              "text": "fix the bug"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "same thought",
+              "signature": "sig-0"
+            },
+            {
+              "type": "text",
+              "text": "I will read the file again."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_0",
+              "name": "read_file",
+              "input": {
+                "path": "a.py"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 100,
+            "output_tokens": 50
+          }
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_0",
+              "content": "same file body"
+            }
+          ]
+        },
+        {
+          "role": "assistant",
+          "content": [
+            {
+              "type": "thinking",
+              "thinking": "same thought",
+              "signature": "sig-1"
+            },
+            {
+              "type": "text",
+              "text": "I will read the file again."
+            },
+            {
+              "type": "tool_use",
+              "id": "toolu_1",
+              "name": "read_file",
+              "input": {
+                "path": "a.py"
+              }
+            }
+          ],
+          "usage": {
+            "input_tokens": 100,
+            "output_tokens": 50
+          }
+        },
+        {
+          "role": "user",
+          "content": [
+            {
+              "type": "tool_result",
+              "tool_use_id": "toolu_1",
+              "content": "same file body"
+            }
+          ]
+        }
+      ]
+    },
+    "reject": {
+      "status": 400,
+      "message": "dsv41flash-let-me-loop"
+    }
   }
 ]
