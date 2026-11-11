@@ -66,7 +66,7 @@
 //     "models": [
 //       {
 //         "name": "dsv41flash-let-me-loop",
-//         "targets": ["*/deepseek-v4.1-flash*"],
+//         "targets": ["fusionxparks/DeepSeek-V4.1-Flash-1017"],
 //         "fragment": true,
 //         "mode": "inject"
 //       }

@@ -86,7 +86,7 @@ magpie plugin options loop-guard '{…}'
 
 一条带 `name` 的 inject 规则就是一个预设：名字只给人看，行为全由字段决定。预设命中时（碎片循环或计数达到阈值），中间件在轮次数组末尾追加一条 `prompt` 文本的用户消息，请求照常发给供应商——模型看到"你刚才在复读"，自己纠正。
 
-推荐的起步配置——只保护 deepseek-v4.1-flash，碎片复读就注入内置纠正语：
+推荐的起步配置——只保护 fusionxparks/DeepSeek-V4.1-Flash-1017（targets 写完整名称即全匹配，大小写不敏感；也可用 `*` 通配或 `/正则/`），碎片复读就注入内置纠正语：
 
 ```json
 {
@@ -94,7 +94,7 @@ magpie plugin options loop-guard '{…}'
   "models": [
     {
       "name": "dsv41flash-let-me-loop",
-      "targets": ["*/deepseek-v4.1-flash*"],
+      "targets": ["fusionxparks/DeepSeek-V4.1-Flash-1017"],
       "fragment": true,
       "mode": "inject"
     }
@@ -110,7 +110,7 @@ magpie plugin options loop-guard '{…}'
   "models": [
     {
       "name": "dsv41flash-let-me-loop",
-      "targets": ["*/deepseek-v4.1-flash*"],
+      "targets": ["fusionxparks/DeepSeek-V4.1-Flash-1017"],
       "fragment": true,
       "mode": "inject",
       "prompt": "[复读拦截] 你似乎有段思考退化成了碎片复读, 下次遇到请直接继续执行下一步，不要再输出任何确认语、寒暄或空话, 直接给出具体的下一步操作，不要再重复'Let me...'或'好/做'之类的空话。"
@@ -125,7 +125,7 @@ magpie plugin options loop-guard '{…}'
 {
   "targets": [],
   "models": [
-    { "name": "dsv41flash-let-me-loop", "targets": ["*/deepseek-v4.1-flash*"], "fragment": true, "mode": "inject" },
+    { "name": "dsv41flash-let-me-loop", "targets": ["fusionxparks/DeepSeek-V4.1-Flash-1017"], "fragment": true, "mode": "inject" },
     { "targets": ["deepseek/*"], "threshold": 3 },
     { "targets": ["/^anthropic\\/claude-opus/"], "mode": "log" }
   ]

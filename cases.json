@@ -7272,7 +7272,7 @@
     "name": "inject preset dsv41flash-let-me-loop: a Let-me fragment loop gets the corrective message",
     "ctx": {
       "protocol": "anthropic",
-      "model": "opencode-zen/deepseek-v4.1-flash-free"
+      "model": "fusionxparks/DeepSeek-V4.1-Flash-1017"
     },
     "options": {
       "targets": [],
@@ -7280,7 +7280,7 @@
         {
           "name": "dsv41flash-let-me-loop",
           "targets": [
-            "*/deepseek-v4.1-flash*"
+            "fusionxparks/DeepSeek-V4.1-Flash-1017"
           ],
           "fragment": true,
           "mode": "inject"
@@ -7288,7 +7288,7 @@
       ]
     },
     "request": {
-      "model": "deepseek-v4.1-flash-free",
+      "model": "DeepSeek-V4.1-Flash-1017",
       "stream": true,
       "messages": [
         {
