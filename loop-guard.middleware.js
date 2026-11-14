@@ -113,20 +113,47 @@ const imul = typeof Math.imul === "function"
     return ((al * bl) + (((ah * bl + al * bh) << 16) >>> 0) | 0)
   }
 
-export function onRequest(body, ctx) {
-  if (!body || typeof body !== "object" || Array.isArray(body)) return
+// decide is onRequest's judgment with nothing done about it: the rule that
+// fired and how far the reply repeated. null when nothing fires. inspect and
+// onRequest both read it, so a report of what happened can never disagree
+// with what was done.
+function decide(body, ctx) {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return null
   const built = cfg(ctx)
-  if (!agentAllowed(ctx && ctx.agent, built.agents)) return
+  if (!agentAllowed(ctx && ctx.agent, built.agents)) return null
   const c = pick(built, ctx && ctx.model)
-  if (c === null) return
-  if (c.scope !== null && c.scope.length === 0) return // scope:[] — 完全放行
+  if (c === null) return null
+  if (c.scope !== null && c.scope.length === 0) return null // scope:[] — 完全放行
   const turns = turnsOf(body, ctx && ctx.protocol)
-  if (turns === null) return
+  if (turns === null) return null
   const list = turns.list
   const st = { walk: 0, chars: 0, max: c.maxChars, over: false }
   const frag = fragmentTail(list, c, st, ctx && ctx.protocol)
   const run = countTail(list, c, st, ctx && ctx.protocol)
-  if (frag === 0 && run < c.threshold) return
+  if (frag === 0 && run < c.threshold) return null
+  return { c: c, turns: turns, frag: frag, run: run }
+}
+
+// inspect is what the guard makes of one request, for a caller that only
+// reports: the Bun gateway hook the observation plugin runs. Nothing is
+// changed and nothing is turned away. null when nothing fires, so a request
+// that is fine is never written down.
+export function inspect(body, ctx) {
+  const d = decide(body, ctx)
+  if (d === null) return null
+  return {
+    preset: d.c.name || "default",
+    mode: d.c.mode,
+    why: d.frag > 0 ? "fragment" : "repeat",
+    run: d.run,
+    threshold: d.c.threshold
+  }
+}
+
+export function onRequest(body, ctx) {
+  const d = decide(body, ctx)
+  if (d === null) return
+  const c = d.c, turns = d.turns, frag = d.frag, run = d.run
   const why = frag > 0
     ? "its newest reply degraded into a fragment loop"
     : "it has repeated the same reply " + run + " times in a row"

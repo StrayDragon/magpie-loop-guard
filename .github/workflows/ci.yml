@@ -25,6 +25,8 @@ jobs:
         run: node -e "JSON.parse(require('fs').readFileSync('package.json','utf8'))"
       - name: Cases (node ${{ matrix.node }})
         run: node test.mjs
+      - name: Hooks (node)
+        run: node test.hooks.mjs
 
   bun:
     runs-on: ubuntu-latest
@@ -35,6 +37,8 @@ jobs:
           bun-version: latest
       - name: Cases (bun)
         run: bun test.mjs
+      - name: Hooks (bun)
+        run: bun test.hooks.mjs
 
   moejs:
     # production's engine: magpie runs gateway middleware in moejs, not in

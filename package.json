@@ -1,22 +1,28 @@
 {
   "name": "magpie-loop-guard",
-  "version": "1.1.0",
-  "description": "Break LLM loops as magpie gateway middleware: after N identical replies in a session, refuse the next request, or inject a preset corrective prompt so the model self-corrects (LLM 死循环保护)",
+  "version": "1.2.0",
+  "description": "Break LLM loops as a magpie gateway plugin: after N identical replies in a session, refuse the next request, or inject a preset corrective prompt so the model self-corrects; with a page of its own showing what it did (LLM 死循环保护)",
   "type": "module",
   "files": [
     "loop-guard.middleware.js",
+    "loop-guard.hooks.js",
+    "loop-guard.server.js",
+    "page/",
     "README.md"
   ],
   "keywords": [
     "magpie",
     "magpie-plugin",
     "magpie-middleware",
+    "magpie-hooks",
+    "magpie-page",
     "loop",
     "loop-guard",
     "repeat",
     "guard",
     "preset",
-    "llm-gateway"
+    "llm-gateway",
+    "observability"
   ],
   "license": "MIT",
   "author": "StrayDragon",
@@ -27,10 +33,26 @@
     "url": "git+https://github.com/StrayDragon/magpie-loop-guard.git"
   },
   "scripts": {
-    "test": "node test.mjs && (cd verify && go run . -file ../loop-guard.middleware.js -cases ../cases.json)"
+    "test": "node test.mjs && (cd verify && go run . -file ../loop-guard.middleware.js -cases ../cases.json)",
+    "test:hooks": "bun test.hooks.mjs"
   },
+  "main": "./loop-guard.server.js",
   "magpie": {
     "middleware": "./loop-guard.middleware.js",
+    "hooks": "./loop-guard.hooks.js",
+    "page": {
+      "title": "Loop guard",
+      "titles": {
+        "zh": "循环保护",
+        "zh-TW": "迴圈保護",
+        "ja": "ループガード"
+      },
+      "file": "page/gate.html",
+      "service": {
+        "port": 3477,
+        "option": "port"
+      }
+    },
     "options": {
       "targets": [
         "*"
